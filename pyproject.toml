@@ -1,0 +1,7 @@
+[project]
+name = "data-science-nailgun"
+version = "0.1.0"
+description = "An advanced package for data science experimentation."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
