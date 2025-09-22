@@ -8,6 +8,7 @@ multiple modules and configuration files.
 import yaml
 from typing import Dict, List, Optional
 from sklearn.pipeline import Pipeline
+from sklearn.model_selection import GridSearchCV
 from .dataloader import DataLoader
 from .preprocessing import create_preprocessing_pipeline
 from .model_factory import create_model
@@ -16,7 +17,11 @@ from .model_factory import create_model
 class ExperimentController:
     """Main controller for running data science experiments."""
 
-    def __init__(self, config_paths: Dict[str, str], model_config_paths: Optional[List[str]] = None):
+    def __init__(
+        self,
+        config_paths: Dict[str, str],
+        model_config_paths: Optional[List[str]] = None,
+    ):
         """
         Initialize controller with configuration file paths.
 
@@ -97,24 +102,57 @@ class ExperimentController:
             print("No models to train. Call setup_models() first.")
             return
 
-        if not self.data or 'train' not in self.data:
+        if not self.data or "train" not in self.data:
             raise ValueError("Data not loaded. Call setup_data() first.")
 
-        train_data = self.data['train']
-        X_train = train_data.drop(columns=[self.configs['data']['data']['target']['column']])
-        y_train = train_data[self.configs['data']['data']['target']['column']]
+        train_data = self.data["train"]
+        X_train = train_data.drop(
+            columns=[self.configs["data"]["data"]["target"]["column"]]
+        )
+        y_train = train_data[self.configs["data"]["data"]["target"]["column"]]
 
-        for i, model in enumerate(self.models):
-            # Create pipeline: preprocessing + model
-            pipeline = Pipeline([
-                ('preprocessing', self.preprocessing_pipeline),
-                ('model', model)
-            ])
+        for i, (model, config_path) in enumerate(
+            zip(self.models, self.model_config_paths)
+        ):
+            # Load the full config to check for hypertuning
+            with open(config_path, "r") as f:
+                full_config = yaml.safe_load(f)
+
+            estimator = model
+            if (
+                "hypertuning" in full_config
+                and full_config["hypertuning"]["method"] == "grid_search"
+            ):
+                hypertuning_config = full_config["hypertuning"]
+                estimator = GridSearchCV(
+                    model,
+                    param_grid=hypertuning_config["parameters"],
+                    cv=hypertuning_config.get("cv", 5),
+                    scoring=hypertuning_config.get("scoring", "accuracy"),
+                    verbose=1,
+                )
+                print(
+                    f"Training model {i + 1}/{len(self.models)}: {type(model).__name__} with Grid Search"
+                )
+            else:
+                print(
+                    f"Training model {i + 1}/{len(self.models)}: {type(model).__name__}"
+                )
+
+            # Create pipeline: preprocessing + estimator
+            pipeline = Pipeline(
+                [("preprocessing", self.preprocessing_pipeline), ("model", estimator)]
+            )
 
             # Fit the pipeline
-            print(f"Training model {i+1}/{len(self.models)}: {type(model).__name__}")
             pipeline.fit(X_train, y_train)
             self.trained_pipelines.append(pipeline)
+
+            # Print best parameters if grid search was used
+            if isinstance(estimator, GridSearchCV):
+                print(f"  Best parameters: {estimator.best_params_}")
+                print(f"  Best cross-validation score: {estimator.best_score_:.4f}")
+
             print("  Model trained successfully")
 
         return self.trained_pipelines
@@ -166,7 +204,9 @@ class ExperimentController:
         return self.experiment_state
 
 
-def run_experiment(config_paths: Dict[str, str], model_config_paths: Optional[List[str]] = None) -> ExperimentController:
+def run_experiment(
+    config_paths: Dict[str, str], model_config_paths: Optional[List[str]] = None
+) -> ExperimentController:
     """
     Convenience function to run a complete experiment.
 
@@ -206,6 +246,6 @@ if __name__ == "__main__":
     if pipelines:
         print(f"\nTrained {len(pipelines)} model pipelines:")
         for i, pipeline in enumerate(pipelines):
-            print(f"  Pipeline {i+1}: {type(pipeline.named_steps['model']).__name__}")
+            print(f"  Pipeline {i + 1}: {type(pipeline.named_steps['model']).__name__}")
     else:
         print("\nNo pipelines trained yet.")

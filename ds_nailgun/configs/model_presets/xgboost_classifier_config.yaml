@@ -15,9 +15,9 @@ model:
 hypertuning:
   method: "grid_search"  # Options: "grid_search", "random_search"
   parameters:
-    n_estimators: [50, 100, 200]
-    max_depth: [3, 6, 9]
-    learning_rate: [0.01, 0.1, 0.2]
+    n_estimators: [50, 100]
+    max_depth: [3, 6]
+    learning_rate: [0.1, 0.2]
     subsample: [0.8, 1.0]
     colsample_bytree: [0.8, 1.0]
   cv: 5
