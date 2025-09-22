@@ -12,31 +12,33 @@ data:
     column: "Survived"
     classes: 2  # Number of classes. If classes is 0, then this is a regression problem
   features:
-    int:
+    # Passenger class and family information (ordinal/categorical integers)
+    passenger_info:
       - "Pclass"
       - "SibSp"
       - "Parch"
-    float:
+    # Continuous numerical features
+    continuous_features:
       - "Age"
       - "Fare"
-    categorical:
+    # Categorical string features
+    categorical_features:
       - "Sex"
       - "Embarked"
-    string: []
 
 preprocessing:
   imputation:
-    int:
+    passenger_info:
       method: "median"
-    float:
+    continuous_features:
       method: "mean"
-    categorical:
+    categorical_features:
       method: "constant"
       fill_value: -1
   transforms:
-    float:
+    continuous_features:
       method: "standard_scaler"
-    categorical:
+    categorical_features:
       method: "one_hot_encoding"
   feature_selection:
     method: "select_k_best"

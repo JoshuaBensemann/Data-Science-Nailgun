@@ -52,7 +52,7 @@ class DataLoader:
         if "target" in self.config["data"]:
             columns.add(self.config["data"]["target"]["column"])
 
-        # Add feature columns
+        # Add feature columns from all user-defined feature groups
         if "features" in self.config["data"]:
             features = self.config["data"]["features"]
             for feature_list in features.values():
@@ -78,7 +78,7 @@ def load_dataset(config_path):
 # Test the setup
 if __name__ == "__main__":
     # Test with titanic config
-    config_path = "configs/examples/titanic_data_config.yaml"
+    config_path = "ds_nailgun/configs/examples/titanic_data_config.yaml"
     data = load_dataset(config_path)
 
     print("Train shape:", data["train"].shape)

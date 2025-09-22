@@ -38,48 +38,59 @@ class PreprocessingPipeline:
         self.feature_columns = self._get_feature_columns()
 
     def _get_feature_columns(self):
-        """Get feature columns organized by type."""
+        """Get feature columns organized by user-defined feature groups."""
         features = self.config["data"]["features"]
-        return {
-            "int": features.get("int", []),
-            "float": features.get("float", []),
-            "categorical": features.get("categorical", []),
-            "string": features.get("string", []),
-        }
+        # Return all feature groups as defined in config, no hardcoded types
+        return features
 
-    def _create_feature_pipeline(self, feature_type, imputation_config, transform_config):
-        """Create a preprocessing pipeline for a specific feature type."""
-        if feature_type not in imputation_config:
+    def _create_feature_pipeline(
+        self, feature_group, imputation_config, transform_config
+    ):
+        """Create a preprocessing pipeline for a specific user-defined feature group."""
+        if feature_group not in imputation_config:
             return None
 
-        cols = self.feature_columns.get(feature_type, [])
+        cols = self.feature_columns.get(feature_group, [])
         if not cols:
             return None
 
-        impute_method = imputation_config[feature_type]["method"]
+        impute_method = imputation_config[feature_group]["method"]
 
         # Create imputer based on config
         if impute_method == "constant":
-            fill_value = imputation_config[feature_type].get("fill_value", "missing" if feature_type == "categorical" else 0)
-            # Ensure categorical fill_value is string
-            if feature_type == "categorical" and not isinstance(fill_value, str):
+            fill_value = imputation_config[feature_group].get("fill_value", "missing")
+            # For categorical-like features, ensure fill_value is appropriate
+            if feature_group.lower() in ["categorical", "string"] and not isinstance(
+                fill_value, str
+            ):
                 fill_value = str(fill_value)
             imputer = SimpleImputer(strategy="constant", fill_value=fill_value)
         else:
             imputer = SimpleImputer(strategy=impute_method)
 
         # Apply transforms if specified in config
-        if transform_config and feature_type in transform_config:
-            method = transform_config[feature_type]["method"]
+        if transform_config and feature_group in transform_config:
+            method = transform_config[feature_group]["method"]
 
             if method == "standard_scaler":
-                transformer = Pipeline([("imputer", imputer), ("scaler", StandardScaler())])
+                transformer = Pipeline(
+                    [("imputer", imputer), ("scaler", StandardScaler())]
+                )
             elif method == "min_max_scaler":
-                transformer = Pipeline([("imputer", imputer), ("scaler", MinMaxScaler())])
+                transformer = Pipeline(
+                    [("imputer", imputer), ("scaler", MinMaxScaler())]
+                )
             elif method == "robust_scaler":
-                transformer = Pipeline([("imputer", imputer), ("scaler", RobustScaler())])
+                transformer = Pipeline(
+                    [("imputer", imputer), ("scaler", RobustScaler())]
+                )
             elif method == "one_hot_encoding":
-                transformer = Pipeline([("imputer", imputer), ("encoder", OneHotEncoder(sparse_output=False, drop="first"))])
+                transformer = Pipeline(
+                    [
+                        ("imputer", imputer),
+                        ("encoder", OneHotEncoder(sparse_output=False, drop="first")),
+                    ]
+                )
             else:
                 # Unknown method, just impute
                 transformer = imputer
@@ -87,7 +98,7 @@ class PreprocessingPipeline:
             # No transforms, just impute
             transformer = imputer
 
-        return (f"{feature_type}_pipeline", transformer, cols)
+        return (f"{feature_group}_pipeline", transformer, cols)
 
     def _create_imputation_transformers(self, preprocessing_config):
         """Create transformers list for imputation and transforms."""
@@ -97,10 +108,10 @@ class PreprocessingPipeline:
             imputation_config = preprocessing_config["imputation"]
             transform_config = preprocessing_config.get("transforms", {})
 
-            # Loop through all feature types and create pipelines
-            for feature_type in ["int", "float", "categorical"]:
+            # Loop through all user-defined feature groups and create pipelines
+            for feature_group in self.feature_columns.keys():
                 pipeline_info = self._create_feature_pipeline(
-                    feature_type, imputation_config, transform_config
+                    feature_group, imputation_config, transform_config
                 )
                 if pipeline_info:
                     transformers.append(pipeline_info)
@@ -185,12 +196,16 @@ class PreprocessingPipeline:
 
         # Create base transformer (ColumnTransformer or passthrough)
         if transformers:
-            base_transformer = ColumnTransformer(transformers=transformers, remainder="drop")
+            base_transformer = ColumnTransformer(
+                transformers=transformers, remainder="drop"
+            )
         else:
             base_transformer = FunctionTransformer(func=None)
 
         # Add feature selection if specified
-        final_pipeline = self._create_feature_selection_step(preprocessing_config, base_transformer)
+        final_pipeline = self._create_feature_selection_step(
+            preprocessing_config, base_transformer
+        )
 
         return final_pipeline
 

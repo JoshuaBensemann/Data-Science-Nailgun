@@ -25,51 +25,61 @@ data:
     # Number of classes for classification (use 0 for regression)
     classes: 2  # Examples: 2 (binary), 3+ (multiclass), 0 (regression)
 
-  # Feature configuration - group features by data type
+  # Feature configuration - group features by ANY user-defined categories
+  # You can use any names for your feature groups (not restricted to int/float/categorical/string)
+  # Each group can contain a list of column names
   features:
-    # Integer features (whole numbers)
-    int:
+    # Example: Numerical features that should be treated as integers
+    numerical_int:
       - "feature1"
       - "feature2"
-    # Float features (decimal numbers)
-    float:
+    # Example: Numerical features that should be treated as floats
+    numerical_float:
       - "feature3"
       - "feature4"
-    # Categorical features (discrete categories)
-    categorical:
+    # Example: Categorical features for classification
+    categories:
       - "category1"
       - "category2"
-    # String features (text data - typically not used in ML models)
-    string:
-      - "text_feature1"
-      # Can be empty if no string features
-      # - "text_feature2"
+    # Example: Text features (if you want to keep them for reference)
+    text_fields:
+      - "description"
+      - "notes"
+    # You can add as many custom groups as needed:
+    # custom_group_1:
+    #   - "custom_feature_a"
+    #   - "custom_feature_b"
+    # custom_group_2:
+    #   - "another_feature"
 
 # Preprocessing configuration - defines data preprocessing pipeline
 preprocessing:
   # Imputation strategies for handling missing values
+  # Configure imputation for each of your custom feature groups
   imputation:
-    # Integer features imputation
-    int:
+    # Imputation for your numerical_int group
+    numerical_int:
       method: "median"  # Options: "median", "mean", "most_frequent", "constant"
-    # Float features imputation
-    float:
+    # Imputation for your numerical_float group
+    numerical_float:
       method: "mean"  # Options: "mean", "median", "most_frequent", "constant"
-    # Categorical features imputation
-    categorical:
+    # Imputation for your categories group
+    categories:
       method: "constant"  # Options: "most_frequent", "constant"
       fill_value: -1  # Only needed for "constant" method
-    # String features imputation (rarely used)
-    string:
+    # Imputation for your text_fields group (rarely used)
+    text_fields:
       method: "constant"  # Options: "constant"
+      fill_value: "unknown"
 
   # Feature transformation strategies
+  # Configure transforms for each of your custom feature groups
   transforms:
-    # Float features transformation
-    float:
+    # Transforms for numerical_float group
+    numerical_float:
       method: "standard_scaler"  # Options: "standard_scaler", "min_max_scaler", "robust_scaler", "none"
-    # Categorical features transformation
-    categorical:
+    # Transforms for categories group
+    categories:
       method: "one_hot_encoding"  # Options: "one_hot_encoding", "label_encoding", "ordinal_encoding", "none"
       
   # Feature selection strategies
