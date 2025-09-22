@@ -1,0 +1,24 @@
+# XGBoost Classifier Model Configuration
+
+model:
+  type: XGBClassifier
+  library: xgboost
+  parameters:
+    n_estimators: 100
+    max_depth: 6
+    learning_rate: 0.1
+    subsample: 0.8
+    colsample_bytree: 0.8
+    random_state: 1986
+
+# Optional hyperparameter tuning configuration
+hypertuning:
+  method: "grid_search"  # Options: "grid_search", "random_search"
+  parameters:
+    n_estimators: [50, 100, 200]
+    max_depth: [3, 6, 9]
+    learning_rate: [0.01, 0.1, 0.2]
+    subsample: [0.8, 1.0]
+    colsample_bytree: [0.8, 1.0]
+  cv: 5
+  scoring: 'accuracy'

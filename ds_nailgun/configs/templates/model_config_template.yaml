@@ -4,9 +4,9 @@
 
 # Model configuration section - defines the model type and parameters
 model:
-  # Model class name (e.g., RandomForestClassifier, RandomForestRegressor, LogisticRegression, LinearRegression)
+  # Model class name (e.g., RandomForestClassifier, XGBClassifier, RandomForestRegressor, LogisticRegression, LinearRegression)
   type: "RandomForestClassifier"
-  # Library/module where the model is located (e.g., sklearn.ensemble, sklearn.linear_model)
+  # Library/module where the model is located (e.g., sklearn.ensemble, xgboost, sklearn.linear_model)
   library: "sklearn.ensemble"
   # Model parameters - these are passed directly to the model constructor
   parameters:
@@ -16,6 +16,10 @@ model:
     min_samples_split: 2  # Minimum samples required to split an internal node
     min_samples_leaf: 1   # Minimum samples required to be at a leaf node
     random_state: 42     # Random state for reproducibility
+    # For XGBoost models, you might use:
+    # learning_rate: 0.1
+    # subsample: 0.8
+    # colsample_bytree: 0.8
     # Add other model-specific parameters as needed
     # For example, for LogisticRegression:
     # C: 1.0
@@ -32,6 +36,11 @@ hypertuning:
     max_depth: [null, 10, 20, 30]
     min_samples_split: [2, 5, 10]
     min_samples_leaf: [1, 2, 4]
+    # For XGBoost tuning, you might use:
+    # learning_rate: [0.01, 0.1, 0.2]
+    # max_depth: [3, 6, 9]
+    # subsample: [0.8, 1.0]
+    # colsample_bytree: [0.8, 1.0]
     # For regression models, you might tune:
     # max_features: ["auto", "sqrt", "log2"]
   # Cross-validation folds
@@ -39,6 +48,4 @@ hypertuning:
   # Scoring metric - depends on problem type
   # For classification: "accuracy", "f1", "precision", "recall", "roc_auc"
   # For regression: "neg_mean_squared_error", "neg_mean_absolute_error", "r2"
-  scoring: "accuracy"
-  # Number of iterations for random search (ignored for grid search)
-  n_iter: 10</content>  # Only used for random_search
+  scoring: "accuracy"</content>  # Only used for random_search
