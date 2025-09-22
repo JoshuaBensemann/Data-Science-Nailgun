@@ -34,7 +34,7 @@ preprocessing:
       method: "mean"
     categorical_features:
       method: "constant"
-      fill_value: -1
+      fill_value: "missing"
   transforms:
     continuous_features:
       method: "standard_scaler"

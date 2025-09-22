@@ -6,9 +6,11 @@ logging:
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
   file: "logs/titanic_experiment.log"  # Optional log file path
 
-# Data configuration
+# Data configurations - now supports multiple data configs
 data:
-  config_path: "ds_nailgun/configs/examples/titanic_data_config.yaml"
+  config_paths:
+    - "ds_nailgun/configs/examples/titanic_data_config.yaml"
+    - "ds_nailgun/configs/examples/titanic_data_config_alt.yaml"
 
 # Model configurations
 models:

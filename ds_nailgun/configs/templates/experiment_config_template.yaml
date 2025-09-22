@@ -1,4 +1,7 @@
 # Experiment Configuration Template
+# This template shows how to configure experiments with multiple data and model configurations.
+# The system will automatically create an experiment matrix: data_configs × model_configs
+# Example: 2 data configs × 3 model configs = 6 total experiments
 
 # Logging configuration
 logging:
@@ -6,24 +9,28 @@ logging:
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
   file: "logs/experiment.log"  # Optional log file path
 
-# Data configuration
+# Data configurations - supports multiple data configs for comprehensive experimentation
 data:
-  config_path: "ds_nailgun/configs/examples/data_config.yaml"  # Path to data configuration file
+  config_paths:
+    - "ds_nailgun/configs/examples/data_config.yaml"  # First data configuration
+    - "ds_nailgun/configs/examples/data_config_alt.yaml"  # Second data configuration (optional)
+    # Add more data configs to create experiment matrix: data_configs × model_configs
 
-# Model configurations
+# Model configurations - each model will be trained on each data configuration
 models:
   config_paths:
     - "ds_nailgun/configs/model_presets/model_config_1.yaml"
     - "ds_nailgun/configs/model_presets/model_config_2.yaml"
-    # Add more model configs as needed
+    # Add more model configs as needed - each will be combined with each data config
 
 # Output configuration
 output:
   model_save_directory: "models/experiment/"  # Directory to save trained model pipelines
   save_format: "joblib"  # Options: joblib, pickle
+  # Models will be saved with names like: pipeline_data_config_1_model_1.joblib
 
 # Experiment settings
 experiment:
   name: "Experiment Name"
-  description: "Description of the experiment"
+  description: "Description of the experiment - will run data_configs × model_configs experiments"
   random_seed: 42

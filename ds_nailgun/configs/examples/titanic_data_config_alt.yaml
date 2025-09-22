@@ -1,0 +1,59 @@
+# Titanic Dataset Configuration - Alternative Version
+
+files:
+  train_data: ds_nailgun/data/titanic/train.csv
+  test_data: ds_nailgun/data/titanic/test.csv
+  validation_data: null  # Optional validation data location
+
+data:
+  id:
+    column: "PassengerId"
+  target:
+    column: "Survived"
+    classes: 2  # Number of classes. If classes is 0, then this is a regression problem
+  features:
+    # Socioeconomic status and ticket information
+    socioeconomic:
+      - "Pclass"
+      - "Fare"
+    # Family and relationship data
+    family_data:
+      - "SibSp"
+      - "Parch"
+    # Personal numeric information
+    personal_numeric:
+      - "Age"
+    # Personal categorical information
+    personal_categorical:
+      - "Sex"
+    # Travel details
+    travel_details:
+      - "Embarked"
+
+preprocessing:
+  imputation:
+    socioeconomic:
+      method: "mean"  # Use mean for fare, median might not make sense for class
+    family_data:
+      method: "most_frequent"  # Use mode for family counts
+    personal_numeric:
+      method: "median"  # Age imputation with median
+    personal_categorical:
+      method: "most_frequent"  # Most common gender
+    travel_details:
+      method: "most_frequent"  # Most common embarkation point
+  transforms:
+    socioeconomic:
+      method: "min_max_scaler"  # Scale to 0-1 range for fare and class
+    family_data:
+      method: "standard_scaler"  # Standardize family size features
+    personal_numeric:
+      method: "robust_scaler"  # Robust to outliers for age
+    personal_categorical:
+      method: "one_hot_encoding"  # Encode gender
+    travel_details:
+      method: "one_hot_encoding"  # Encode embarkation ports
+  feature_selection:
+    method: "variance_threshold"  # Remove low-variance features
+    params:
+      threshold: 0.01  # Remove features with variance below 1%</content>

@@ -34,7 +34,7 @@ class ExperimentController:
 
         # Extract configurations
         self.config_paths = {
-            "data": self.experiment_config["data"]["config_path"],
+            "data": self.experiment_config["data"]["config_paths"],  # Now a list
         }
         self.model_config_paths = self.experiment_config["models"]["config_paths"]
         self.output_config = self.experiment_config.get("output", {})
@@ -44,10 +44,10 @@ class ExperimentController:
 
         # Initialize other attributes
         self.configs = {}
-        self.data = None
-        self.preprocessing_pipeline = None
+        self.data = {}  # Now a dict with data config names as keys
+        self.preprocessing_pipeline = {}  # Now a dict with data config names as keys
         self.models = []
-        self.trained_pipelines = []
+        self.trained_pipelines = {}  # Now a dict with experiment names as keys
         self.experiment_state = {}
 
     def setup_logging(self):
@@ -81,47 +81,72 @@ class ExperimentController:
 
     def load_configs(self):
         """Load all configuration files."""
-        for config_type, config_path in self.config_paths.items():
-            with open(config_path, "r") as file:
-                self.configs[config_type] = yaml.safe_load(file)
-            self.logger.info(f"Loaded {config_type} config from {config_path}")
+        # Load data configs (now multiple)
+        self.configs["data"] = []
+        for i, data_config_path in enumerate(self.config_paths["data"]):
+            with open(data_config_path, "r") as file:
+                config = yaml.safe_load(file)
+                self.configs["data"].append(
+                    {
+                        "path": data_config_path,
+                        "config": config,
+                        "name": f"data_config_{i + 1}",
+                    }
+                )
+            self.logger.info(f"Loaded data config {i + 1} from {data_config_path}")
+
+        # Load model configs
+        self.configs["models"] = []
+        for model_config_path in self.model_config_paths:
+            with open(model_config_path, "r") as file:
+                config = yaml.safe_load(file)
+                self.configs["models"].append(
+                    {"path": model_config_path, "config": config}
+                )
+            self.logger.info(f"Loaded model config from {model_config_path}")
 
     def setup_data(self):
-        """Load and prepare the dataset using data_loader."""
-        if "data" not in self.config_paths:
-            raise ValueError(
-                "Data config path not found. Please provide a 'data' config path."
+        """Load and prepare datasets for all data configurations."""
+        if "data" not in self.configs or not self.configs["data"]:
+            raise ValueError("Data configs not loaded. Call load_configs() first.")
+
+        for data_config_info in self.configs["data"]:
+            data_config_path = data_config_info["path"]
+            data_config_name = data_config_info["name"]
+
+            loader = DataLoader(data_config_path)
+            self.data[data_config_name] = loader.load_data()
+
+            self.logger.info(f"Data loaded for {data_config_name}:")
+            self.logger.info(f"  Train: {self.data[data_config_name]['train'].shape}")
+            self.logger.info(f"  Test: {self.data[data_config_name]['test'].shape}")
+            self.logger.info(
+                f"  Validation: {'None' if self.data[data_config_name]['validation'] is None else self.data[data_config_name]['validation'].shape}"
             )
-
-        data_config_path = self.config_paths["data"]
-        loader = DataLoader(data_config_path)
-        self.data = loader.load_data()
-
-        self.logger.info("Data loaded successfully:")
-        self.logger.info(f"  Train: {self.data['train'].shape}")
-        self.logger.info(f"  Test: {self.data['test'].shape}")
-        self.logger.info(
-            f"  Validation: {'None' if self.data['validation'] is None else self.data['validation'].shape}"
-        )
 
         return self.data
 
     def setup_preprocessing(self):
-        """Create preprocessing pipeline (ready for use in larger pipeline)."""
-        if "data" not in self.config_paths:
-            raise ValueError("Data config path not found for preprocessing.")
+        """Create preprocessing pipelines for all data configurations."""
+        if "data" not in self.configs or not self.configs["data"]:
+            raise ValueError("Data configs not loaded. Call load_configs() first.")
 
-        # Create preprocessing pipeline
-        data_config_path = self.config_paths["data"]
-        preprocessor = create_preprocessing_pipeline(data_config_path)
-        self.preprocessing_pipeline = preprocessor.create_pipeline()
+        for data_config_info in self.configs["data"]:
+            data_config_path = data_config_info["path"]
+            data_config_name = data_config_info["name"]
 
-        self.logger.info("Preprocessing pipeline created successfully:")
-        self.logger.info(
-            f"  Pipeline type: {type(self.preprocessing_pipeline).__name__}"
-        )
-        self.logger.info("  Ready for use in larger pipeline")
+            # Create preprocessing pipeline
+            preprocessor = create_preprocessing_pipeline(data_config_path)
+            self.preprocessing_pipeline[data_config_name] = (
+                preprocessor.create_pipeline()
+            )
 
+            self.logger.info(f"Preprocessing pipeline created for {data_config_name}:")
+            self.logger.info(
+                f"  Pipeline type: {type(self.preprocessing_pipeline[data_config_name]).__name__}"
+            )
+
+        self.logger.info("All preprocessing pipelines ready for use")
         return self.preprocessing_pipeline
 
     def setup_models(self):
@@ -140,66 +165,92 @@ class ExperimentController:
         return self.models
 
     def train_models(self):
-        """Train models by creating pipelines and fitting on training data."""
+        """Train models by creating pipelines for each data config and model combination."""
         if not self.models:
             self.logger.warning("No models to train. Call setup_models() first.")
             return
 
-        if not self.data or "train" not in self.data:
+        if not self.data:
             raise ValueError("Data not loaded. Call setup_data() first.")
 
-        train_data = self.data["train"]
-        X_train = train_data.drop(
-            columns=[self.configs["data"]["data"]["target"]["column"]]
-        )
-        y_train = train_data[self.configs["data"]["data"]["target"]["column"]]
-
-        for i, (model, config_path) in enumerate(
-            zip(self.models, self.model_config_paths)
-        ):
-            # Load the full config to check for hypertuning
-            with open(config_path, "r") as f:
-                full_config = yaml.safe_load(f)
-
-            estimator = model
-            if (
-                "hypertuning" in full_config
-                and full_config["hypertuning"]["method"] == "grid_search"
-            ):
-                hypertuning_config = full_config["hypertuning"]
-                estimator = GridSearchCV(
-                    model,
-                    param_grid=hypertuning_config["parameters"],
-                    cv=hypertuning_config.get("cv", 5),
-                    scoring=hypertuning_config.get("scoring", "accuracy"),
-                    verbose=1,
-                )
-                self.logger.info(
-                    f"Training model {i + 1}/{len(self.models)}: {type(model).__name__} with Grid Search"
-                )
-            else:
-                self.logger.info(
-                    f"Training model {i + 1}/{len(self.models)}: {type(model).__name__}"
-                )
-
-            # Create pipeline: preprocessing + estimator
-            pipeline = Pipeline(
-                [("preprocessing", self.preprocessing_pipeline), ("model", estimator)]
+        if not self.preprocessing_pipeline:
+            raise ValueError(
+                "Preprocessing pipelines not created. Call setup_preprocessing() first."
             )
 
-            # Fit the pipeline
-            pipeline.fit(X_train, y_train)
-            self.trained_pipelines.append(pipeline)
+        experiment_count = 0
 
-            # Print best parameters if grid search was used
-            if isinstance(estimator, GridSearchCV):
-                self.logger.info(f"  Best parameters: {estimator.best_params_}")
-                self.logger.info(
-                    f"  Best cross-validation score: {estimator.best_score_:.4f}"
+        # Train models for each combination of data config and model config
+        for data_config_info in self.configs["data"]:
+            data_config_name = data_config_info["name"]
+            data_config = data_config_info["config"]
+            train_data = self.data[data_config_name]["train"]
+
+            X_train = train_data.drop(columns=[data_config["data"]["target"]["column"]])
+            y_train = train_data[data_config["data"]["target"]["column"]]
+
+            for model_idx, (model, model_config_info) in enumerate(
+                zip(self.models, self.configs["models"])
+            ):
+                experiment_count += 1
+                experiment_name = f"{data_config_name}_model_{model_idx + 1}"
+
+                # Load the full model config to check for hypertuning
+                full_config = model_config_info["config"]
+
+                estimator = model
+                if (
+                    "hypertuning" in full_config
+                    and full_config["hypertuning"]["method"] == "grid_search"
+                ):
+                    hypertuning_config = full_config["hypertuning"]
+                    estimator = GridSearchCV(
+                        model,
+                        param_grid=hypertuning_config["parameters"],
+                        cv=hypertuning_config.get("cv", 5),
+                        scoring=hypertuning_config.get("scoring", "accuracy"),
+                        verbose=1,
+                    )
+                    self.logger.info(
+                        f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Grid Search"
+                    )
+                else:
+                    self.logger.info(
+                        f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__}"
+                    )
+
+                # Create pipeline: preprocessing + estimator
+                pipeline = Pipeline(
+                    [
+                        (
+                            "preprocessing",
+                            self.preprocessing_pipeline[data_config_name],
+                        ),
+                        ("model", estimator),
+                    ]
                 )
 
-            self.logger.info("  Model trained successfully")
+                # Fit the pipeline
+                pipeline.fit(X_train, y_train)
 
+                # Store the trained pipeline
+                self.trained_pipelines[experiment_name] = {
+                    "pipeline": pipeline,
+                    "data_config": data_config_name,
+                    "model_config": model_config_info["path"],
+                    "model_name": type(model).__name__,
+                }
+
+                # Print best parameters if grid search was used
+                if isinstance(estimator, GridSearchCV):
+                    self.logger.info(f"  Best parameters: {estimator.best_params_}")
+                    self.logger.info(
+                        f"  Best cross-validation score: {estimator.best_score_:.4f}"
+                    )
+
+                self.logger.info(f"  Experiment {experiment_name} trained successfully")
+
+        self.logger.info(f"Completed training {experiment_count} model experiments")
         return self.trained_pipelines
 
     def save_models(self, save_directory: str, save_format: str = "joblib"):
@@ -210,14 +261,21 @@ class ExperimentController:
 
         os.makedirs(save_directory, exist_ok=True)
 
-        for i, pipeline in enumerate(self.trained_pipelines):
-            model_name = type(pipeline.named_steps["model"]).__name__
+        for experiment_name, experiment_info in self.trained_pipelines.items():
+            pipeline = experiment_info["pipeline"]
+            model_name = experiment_info["model_name"]
+
+            # Get the actual model name (handle GridSearchCV)
             if hasattr(pipeline.named_steps["model"], "best_estimator_"):
-                model_name = type(
+                actual_model_name = type(
                     pipeline.named_steps["model"].best_estimator_
                 ).__name__
+            else:
+                actual_model_name = model_name
 
-            filename = f"pipeline_{i + 1}_{model_name.lower()}.{save_format}"
+            filename = (
+                f"pipeline_{experiment_name}_{actual_model_name.lower()}.{save_format}"
+            )
             filepath = os.path.join(save_directory, filename)
 
             if save_format == "joblib":
@@ -228,7 +286,7 @@ class ExperimentController:
                 with open(filepath, "wb") as f:
                     pickle.dump(pipeline, f)
 
-            self.logger.info(f"Saved pipeline {i + 1} to {filepath}")
+            self.logger.info(f"Saved experiment {experiment_name} to {filepath}")
 
     def run_experiment(self):
         """Run the complete experiment pipeline."""
@@ -313,11 +371,18 @@ if __name__ == "__main__":
     # Access trained pipelines
     pipelines = controller.get_trained_pipelines()
     if pipelines:
-        print(f"\nTrained {len(pipelines)} model pipelines:")
-        for i, pipeline in enumerate(pipelines):
-            model_name = type(pipeline.named_steps["model"]).__name__
+        print(f"\nTrained {len(pipelines)} model experiments:")
+        for experiment_name, experiment_info in pipelines.items():
+            pipeline = experiment_info["pipeline"]
+            data_config = experiment_info["data_config"]
+            model_name = experiment_info["model_name"]
+
+            # Get the actual model name (handle GridSearchCV)
             if hasattr(pipeline.named_steps["model"], "best_estimator_"):
-                model_name = f"GridSearchCV({type(pipeline.named_steps['model'].best_estimator_).__name__})"
-            print(f"  Pipeline {i + 1}: {model_name}")
+                display_name = f"GridSearchCV({type(pipeline.named_steps['model'].best_estimator_).__name__})"
+            else:
+                display_name = model_name
+
+            print(f"  Experiment {experiment_name}: {data_config} + {display_name}")
     else:
         print("\nNo pipelines trained yet.")
