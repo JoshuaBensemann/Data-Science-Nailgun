@@ -71,3 +71,19 @@ preprocessing:
     # Categorical features transformation
     categorical:
       method: "one_hot_encoding"  # Options: "one_hot_encoding", "label_encoding", "ordinal_encoding", "none"
+      
+  # Feature selection strategies
+  feature_selection:
+    method: "select_k_best"  # Options: "select_k_best", "variance_threshold", "rfe", null (for no feature selection)
+    params:  # Parameters depend on the method selected
+      # For select_k_best:
+      k: 5  # Number of top features to select
+      score_func: "f_classif"  # Options: "f_classif" (ANOVA F-value), "chi2", "mutual_info"
+      
+      # For variance_threshold (uncomment to use):
+      # threshold: 0.1  # Features with variance <= threshold will be removed
+      
+      # For rfe (Recursive Feature Elimination) (uncomment to use):
+      # n_features: 5  # Number of features to select
+      # step: 1  # Number of features to remove at each iteration
+      # estimator: "logistic_regression"  # Base estimator for feature importance

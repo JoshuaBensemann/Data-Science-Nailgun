@@ -38,3 +38,8 @@ preprocessing:
       method: "standard_scaler"
     categorical:
       method: "one_hot_encoding"
+  feature_selection:
+    method: "select_k_best"
+    params:
+      k: 5
+      score_func: "f_classif"
