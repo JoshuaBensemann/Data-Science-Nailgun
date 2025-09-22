@@ -11,7 +11,11 @@ class DataLoader:
             self.config = yaml.safe_load(file)
 
     def load_data(self):
-        """Load data according to config."""
+        """Load data according to config.
+
+        Returns:
+            dict: Dictionary with keys 'train', 'test', 'validation' containing DataFrames
+        """
         # Load data files
         train_df = pd.read_csv(self.config["files"]["train_data"])
         test_df = pd.read_csv(self.config["files"]["test_data"])
@@ -29,7 +33,7 @@ class DataLoader:
         if validation_df is not None:
             validation_df = self._filter_columns(validation_df, columns_to_keep)
 
-        return train_df, test_df, validation_df
+        return {"train": train_df, "test": test_df, "validation": validation_df}
 
     def _filter_columns(self, df, columns_to_keep):
         """Filter DataFrame to only include columns that exist in the DataFrame."""
@@ -59,7 +63,14 @@ class DataLoader:
 
 
 def load_dataset(config_path):
-    """Convenience function to load dataset from config."""
+    """Convenience function to load dataset from config.
+
+    Args:
+        config_path (str): Path to YAML config file
+
+    Returns:
+        dict: Dictionary with keys 'train', 'test', 'validation' containing DataFrames
+    """
     loader = DataLoader(config_path)
     return loader.load_data()
 
@@ -68,9 +79,9 @@ def load_dataset(config_path):
 if __name__ == "__main__":
     # Test with titanic config
     config_path = "configs/examples/titanic_data_config.yaml"
-    train_df, test_df, val_df = load_dataset(config_path)
+    data = load_dataset(config_path)
 
-    print("Train shape:", train_df.shape)
-    print("Test shape:", test_df.shape)
-    print("Validation:", val_df is None)
-    print("Train columns:", list(train_df.columns)[:10])  # Show first 10 columns
+    print("Train shape:", data["train"].shape)
+    print("Test shape:", data["test"].shape)
+    print("Validation is None:", data["validation"] is None)
+    print("Train columns:", list(data["train"].columns)[:10])  # Show first 10 columns
