@@ -1,0 +1,40 @@
+# Titanic Dataset Configuration
+
+files:
+  train_data: ds_nailgun/data/titanic/train.csv
+  test_data: ds_nailgun/data/titanic/test.csv
+  validation_data: null  # Optional validation data location
+
+data:
+  id:
+    column: "PassengerId"
+  target:
+    column: "Survived"
+    classes: 2  # Number of classes. If classes is 0, then this is a regression problem
+  features:
+    int:
+      - "Pclass"
+      - "SibSp"
+      - "Parch"
+    float:
+      - "Age"
+      - "Fare"
+    categorical:
+      - "Sex"
+      - "Embarked"
+    string: []
+
+preprocessing:
+  imputation:
+    int:
+      method: "median"
+    float:
+      method: "mean"
+    categorical:
+      method: "constant"
+      fill_value: -1
+  transforms:
+    float:
+      method: "standard_scaler"
+    categorical:
+      method: "one_hot_encoding"

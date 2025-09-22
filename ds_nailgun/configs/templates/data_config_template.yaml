@@ -1,0 +1,73 @@
+# Data Configuration Template
+# This template shows all available options for configuring a dataset in Data-Science-Nailgun
+# Copy this file and customize it for your specific dataset
+
+# File locations section - specifies where your data files are located
+files:
+  # Path to training data (required)
+  train_data: "path/to/train.csv"
+  # Path to test data (required)
+  test_data: "path/to/test.csv"
+  # Path to validation data (optional - set to null if not available)
+  validation_data: "path/to/validation.csv"  # or null
+
+# Data configuration section - defines dataset structure and features
+data:
+  # ID column configuration
+  id:
+    # Name of the column containing unique identifiers
+    column: "ID"
+
+  # Target/label configuration
+  target:
+    # Name of the target column
+    column: "target"
+    # Number of classes for classification (use 0 for regression)
+    classes: 2  # Examples: 2 (binary), 3+ (multiclass), 0 (regression)
+
+  # Feature configuration - group features by data type
+  features:
+    # Integer features (whole numbers)
+    int:
+      - "feature1"
+      - "feature2"
+    # Float features (decimal numbers)
+    float:
+      - "feature3"
+      - "feature4"
+    # Categorical features (discrete categories)
+    categorical:
+      - "category1"
+      - "category2"
+    # String features (text data - typically not used in ML models)
+    string:
+      - "text_feature1"
+      # Can be empty if no string features
+      # - "text_feature2"
+
+# Preprocessing configuration - defines data preprocessing pipeline
+preprocessing:
+  # Imputation strategies for handling missing values
+  imputation:
+    # Integer features imputation
+    int:
+      method: "median"  # Options: "median", "mean", "most_frequent", "constant"
+    # Float features imputation
+    float:
+      method: "mean"  # Options: "mean", "median", "most_frequent", "constant"
+    # Categorical features imputation
+    categorical:
+      method: "constant"  # Options: "most_frequent", "constant"
+      fill_value: -1  # Only needed for "constant" method
+    # String features imputation (rarely used)
+    string:
+      method: "constant"  # Options: "constant"
+
+  # Feature transformation strategies
+  transforms:
+    # Float features transformation
+    float:
+      method: "standard_scaler"  # Options: "standard_scaler", "min_max_scaler", "robust_scaler", "none"
+    # Categorical features transformation
+    categorical:
+      method: "one_hot_encoding"  # Options: "one_hot_encoding", "label_encoding", "ordinal_encoding", "none"
