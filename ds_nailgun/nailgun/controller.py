@@ -9,8 +9,10 @@ import yaml
 import logging
 import joblib
 import os
+from datetime import datetime
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GridSearchCV
+import pandas as pd
 from .dataloader import DataLoader
 from .preprocessing import create_preprocessing_pipeline
 from .model_factory import create_model
@@ -39,7 +41,10 @@ class ExperimentController:
         self.model_config_paths = self.experiment_config["models"]["config_paths"]
         self.output_config = self.experiment_config.get("output", {})
 
-        # Setup logging
+        # Setup output directory structure
+        self.setup_output_directory()
+
+        # Setup logging (now that output directory exists)
         self.setup_logging()
 
         # Initialize other attributes
@@ -50,6 +55,35 @@ class ExperimentController:
         self.trained_pipelines = {}  # Now a dict with experiment names as keys
         self.experiment_state = {}
 
+    def setup_output_directory(self):
+        """Create timestamped output directory structure."""
+        if not self.output_config:
+            self.output_base_dir = None
+            self.output_dir = None
+            return
+
+        # Create base directory if it doesn't exist
+        base_dir = self.output_config.get("base_directory", "experiments")
+        os.makedirs(base_dir, exist_ok=True)
+
+        # Create timestamped experiment directory
+        experiment_name = (
+            self.experiment_config["experiment"]["name"].replace(" ", "_").lower()
+        )
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.output_dir = os.path.join(base_dir, f"{experiment_name}_{timestamp}")
+
+        # Create subdirectories
+        self.models_dir = os.path.join(self.output_dir, "models")
+        self.results_dir = os.path.join(self.output_dir, "results")
+        self.logs_dir = os.path.join(self.output_dir, "logs")
+
+        os.makedirs(self.models_dir, exist_ok=True)
+        os.makedirs(self.results_dir, exist_ok=True)
+        os.makedirs(self.logs_dir, exist_ok=True)
+
+        self.output_base_dir = base_dir
+
     def setup_logging(self):
         """Setup logging based on experiment configuration."""
         logging_config = self.experiment_config.get("logging", {})
@@ -58,26 +92,34 @@ class ExperimentController:
             "format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
 
-        logging.basicConfig(
-            level=level,
-            format=format_str,
-            handlers=[
-                logging.StreamHandler(),  # Console handler
-            ],
-        )
-
-        # Add file handler if specified
-        if "file" in logging_config:
-            log_file = logging_config["file"]
-            os.makedirs(os.path.dirname(log_file), exist_ok=True)
-            file_handler = logging.FileHandler(log_file)
-            file_handler.setFormatter(logging.Formatter(format_str))
-            logging.getLogger().addHandler(file_handler)
-
+        # Create logger
         self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(level)
+
+        # Clear any existing handlers
+        self.logger.handlers.clear()
+
+        # Console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(logging.Formatter(format_str))
+        self.logger.addHandler(console_handler)
+
+        # File handler (if output directory exists)
+        if self.output_dir and "file" in logging_config:
+            log_file = logging_config["file"]
+            # Use the logs directory in the timestamped output folder
+            log_filepath = os.path.join(self.logs_dir, os.path.basename(log_file))
+            os.makedirs(os.path.dirname(log_filepath), exist_ok=True)
+
+            file_handler = logging.FileHandler(log_filepath)
+            file_handler.setFormatter(logging.Formatter(format_str))
+            self.logger.addHandler(file_handler)
+
         self.logger.info(
             f"Initialized logging for experiment: {self.experiment_config['experiment']['name']}"
         )
+        if self.output_dir:
+            self.logger.info(f"Logs will be saved to: {self.logs_dir}")
 
     def load_configs(self):
         """Load all configuration files."""
@@ -253,13 +295,12 @@ class ExperimentController:
         self.logger.info(f"Completed training {experiment_count} model experiments")
         return self.trained_pipelines
 
-    def save_models(self, save_directory: str, save_format: str = "joblib"):
-        """Save trained model pipelines to disk."""
-        if not self.trained_pipelines:
-            self.logger.warning("No trained pipelines to save.")
+    def save_models(self):
+        """Save trained model pipelines to the timestamped output directory."""
+        if not self.trained_pipelines or not self.output_dir:
             return
 
-        os.makedirs(save_directory, exist_ok=True)
+        save_format = self.output_config.get("save_format", "joblib")
 
         for experiment_name, experiment_info in self.trained_pipelines.items():
             pipeline = experiment_info["pipeline"]
@@ -276,7 +317,7 @@ class ExperimentController:
             filename = (
                 f"pipeline_{experiment_name}_{actual_model_name.lower()}.{save_format}"
             )
-            filepath = os.path.join(save_directory, filename)
+            filepath = os.path.join(self.models_dir, filename)
 
             if save_format == "joblib":
                 joblib.dump(pipeline, filepath)
@@ -286,7 +327,139 @@ class ExperimentController:
                 with open(filepath, "wb") as f:
                     pickle.dump(pipeline, f)
 
-            self.logger.info(f"Saved experiment {experiment_name} to {filepath}")
+            self.logger.info(f"Saved model {experiment_name} to {filepath}")
+
+    def save_hyperparameter_results(self):
+        """Save detailed hyperparameter tuning results."""
+        if not self.trained_pipelines or not self.output_dir:
+            return
+
+        for experiment_name, experiment_info in self.trained_pipelines.items():
+            pipeline = experiment_info["pipeline"]
+
+            # Check if this pipeline used GridSearchCV
+            if hasattr(pipeline.named_steps["model"], "cv_results_"):
+                cv_results = pipeline.named_steps["model"].cv_results_
+
+                # Save detailed results as CSV
+                results_file = os.path.join(
+                    self.results_dir, f"hypertuning_{experiment_name}.csv"
+                )
+
+                # Convert cv_results to DataFrame and save as CSV
+                df_results = pd.DataFrame(cv_results)
+                df_results.to_csv(results_file, index=False)
+
+                self.logger.info(
+                    f"Saved hyperparameter results for {experiment_name} to {results_file}"
+                )
+
+    def save_config_summary(self):
+        """Save a summary of all configurations used in the experiment."""
+        if not self.output_dir:
+            return
+
+        summary = {
+            "experiment": self.experiment_config["experiment"],
+            "timestamp": datetime.now().isoformat(),
+            "output_directory": self.output_dir,
+            "data_configs": [],
+            "model_configs": [],
+            "experiments_run": [],
+        }
+
+        # Add data config summaries
+        for data_config_info in self.configs["data"]:
+            summary["data_configs"].append(
+                {
+                    "name": data_config_info["name"],
+                    "path": data_config_info["path"],
+                    "features": list(
+                        data_config_info["config"]["data"]["features"].keys()
+                    ),
+                }
+            )
+
+        # Add model config summaries
+        for model_config_info in self.configs["models"]:
+            model_config = model_config_info["config"]
+            summary["model_configs"].append(
+                {
+                    "path": model_config_info["path"],
+                    "model_type": model_config.get("model", {}).get("type", "unknown"),
+                    "hypertuning": "hypertuning" in model_config,
+                }
+            )
+
+        # Add experiment results summary
+        for experiment_name, experiment_info in self.trained_pipelines.items():
+            pipeline = experiment_info["pipeline"]
+            best_score = None
+
+            if hasattr(pipeline.named_steps["model"], "best_score_"):
+                # Convert numpy scalar to regular Python float for human readability
+                best_score = float(pipeline.named_steps["model"].best_score_)
+
+            summary["experiments_run"].append(
+                {
+                    "name": experiment_name,
+                    "data_config": experiment_info["data_config"],
+                    "model_config": experiment_info["model_config"],
+                    "model_name": experiment_info["model_name"],
+                    "best_cv_score": best_score,
+                }
+            )
+
+        # Save summary as YAML
+        summary_file = os.path.join(self.output_dir, "experiment_summary.yaml")
+        with open(summary_file, "w") as f:
+            yaml.dump(summary, f, default_flow_style=False, indent=2)
+
+        self.logger.info(f"Saved experiment summary to {summary_file}")
+
+        # Save copies of original configuration files
+        self.save_original_configs()
+
+    def save_original_configs(self):
+        """Save copies of all original configuration files used in the experiment."""
+        if not self.output_dir:
+            return
+
+        configs_dir = os.path.join(self.output_dir, "configs")
+        os.makedirs(configs_dir, exist_ok=True)
+
+        # Save experiment config
+        experiment_config_file = os.path.join(configs_dir, "experiment_config.yaml")
+        with open(experiment_config_file, "w") as f:
+            yaml.dump(self.experiment_config, f, default_flow_style=False, indent=2)
+        self.logger.info(
+            f"Saved original experiment config to {experiment_config_file}"
+        )
+
+        # Save data configs
+        for data_config_info in self.configs["data"]:
+            config_name = data_config_info["name"]
+            config_file = os.path.join(configs_dir, f"{config_name}.yaml")
+            with open(config_file, "w") as f:
+                yaml.dump(
+                    data_config_info["config"], f, default_flow_style=False, indent=2
+                )
+            self.logger.info(
+                f"Saved original data config '{config_name}' to {config_file}"
+            )
+
+        # Save model configs
+        for model_config_info in self.configs["models"]:
+            config_path = model_config_info["path"]
+            config_name = os.path.basename(config_path)
+            config_file = os.path.join(configs_dir, config_name)
+            with open(config_file, "w") as f:
+                yaml.dump(
+                    model_config_info["config"], f, default_flow_style=False, indent=2
+                )
+            self.logger.info(
+                f"Saved original model config '{config_name}' to {config_file}"
+            )
 
     def run_experiment(self):
         """Run the complete experiment pipeline."""
@@ -307,7 +480,13 @@ class ExperimentController:
         # Step 5: Train models
         self.train_models()
 
+        # Step 6: Save results
+        self.save_models()
+        self.save_hyperparameter_results()
+        self.save_config_summary()
+
         self.logger.info("Experiment complete!")
+        self.logger.info(f"All results saved to: {self.output_dir}")
         return self.experiment_state
 
     def get_data(self):
@@ -363,26 +542,13 @@ if __name__ == "__main__":
     controller = run_experiment(experiment_config_path)
 
     # Save trained pipelines (if output config exists)
-    if controller.output_config:
-        save_directory = controller.output_config["model_save_directory"]
-        save_format = controller.output_config.get("save_format", "joblib")
-        controller.save_models(save_directory, save_format)
-
-    # Access trained pipelines
-    pipelines = controller.get_trained_pipelines()
-    if pipelines:
-        print(f"\nTrained {len(pipelines)} model experiments:")
-        for experiment_name, experiment_info in pipelines.items():
-            pipeline = experiment_info["pipeline"]
-            data_config = experiment_info["data_config"]
-            model_name = experiment_info["model_name"]
-
-            # Get the actual model name (handle GridSearchCV)
-            if hasattr(pipeline.named_steps["model"], "best_estimator_"):
-                display_name = f"GridSearchCV({type(pipeline.named_steps['model'].best_estimator_).__name__})"
-            else:
-                display_name = model_name
-
-            print(f"  Experiment {experiment_name}: {data_config} + {display_name}")
+    if controller.output_config and controller.output_dir:
+        controller.save_models()
+        controller.save_hyperparameter_results()
+        controller.save_config_summary()
+        print(f"\\n✓ All results saved to: {controller.output_dir}")
+        print(f"  Models: {controller.models_dir}")
+        print(f"  Results: {controller.results_dir}")
+        print(f"  Logs: {controller.logs_dir}")
     else:
-        print("\nNo pipelines trained yet.")
+        print("\\n⚠ No output directory configured - results not saved")

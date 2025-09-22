@@ -25,9 +25,9 @@ models:
 
 # Output configuration
 output:
-  model_save_directory: "models/experiment/"  # Directory to save trained model pipelines
-  save_format: "joblib"  # Options: joblib, pickle
-  # Models will be saved with names like: pipeline_data_config_1_model_1.joblib
+  base_directory: "experiments/"  # Base directory for experiment outputs
+  # The system will create a timestamped folder: experiments/experiment_name_20250123_143022/
+  # This folder will contain: models/, logs/, results/, and config_summary.yaml
 
 # Experiment settings
 experiment:

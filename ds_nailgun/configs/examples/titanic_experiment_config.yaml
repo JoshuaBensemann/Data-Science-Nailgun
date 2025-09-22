@@ -20,7 +20,7 @@ models:
 
 # Output configuration
 output:
-  model_save_directory: "models/titanic_experiment/"  # Directory to save trained model pipelines
+  base_directory: "experiments/"  # Base directory for experiment outputs
   save_format: "joblib"  # Options: joblib, pickle
 
 # Experiment settings
