@@ -1,14 +1,16 @@
 # Data-Science-Nailgun
 
-An advanced package for streamlined data science experimentation with support for multiple data configurations, hyperparameter tuning, and automated model evaluation.
+An advanced package for streamlined data science experimentation with support for multiple data configurations, hyperparameter tuning, automated model evaluation, and multi-experiment analysis.
 
 ## Features
 
 - **Multiple Data Configurations**: Support for different feature sets and preprocessing strategies
 - **Hyperparameter Tuning**: Automated GridSearchCV for optimal model parameters
 - **Experiment Organization**: Timestamped experiment directories with comprehensive result storage
-- **Post-Experiment Analysis**: Tools for model evaluation and prediction generation
+- **Post-Experiment Analysis**: Tools for model evaluation and prediction generation across multiple experiments
+- **Multi-Experiment Comparison**: Compare and select best models across different experiment runs
 - **YAML Configuration**: Human-readable configuration files for experiments
+- **Command Line Tools**: Convenient scripts for experiment analysis and demonstration
 
 ## Installation
 
@@ -34,24 +36,44 @@ pip install pre-commit
 pre-commit install
 ```
 
+## Project Structure
+
+```
+data-science-nailgun/
+├── data/                    # Dataset files (separated from code)
+│   └── titanic/
+│       ├── train.csv
+│       └── test.csv
+├── ds_nailgun/              # Main package
+│   ├── configs/
+│   │   ├── examples/        # Example configurations
+│   │   ├── model_presets/   # Pre-configured models
+│   │   └── templates/       # Configuration templates
+│   └── nailgun/             # Core modules
+├── experiments/             # Experiment outputs (auto-generated)
+├── scripts/                 # Utility scripts
+│   └── post_experiment_demo.py
+└── pyproject.toml           # Package configuration
+```
+
 ## Quick Start with Titanic Example
 
 ### 1. Get the Titanic Dataset
 
-The Titanic dataset is already included in the repository. If you need to download it fresh:
+The Titanic dataset is not included in the repository. You need to download it:
 
 ```bash
 # Create data directory
-mkdir -p ds_nailgun/data/titanic
+mkdir -p data/titanic
 
 # Download from Kaggle (requires Kaggle API key)
 # Or manually download from: https://www.kaggle.com/c/titanic/data
-# Place train.csv and test.csv in ds_nailgun/data/titanic/
+# Place train.csv and test.csv in data/titanic/
 ```
 
 The expected file structure is:
 ```
-ds_nailgun/data/titanic/
+data/titanic/
 ├── train.csv
 └── test.csv
 ```
@@ -78,7 +100,7 @@ This will:
 
 ### 3. Analyze Results with Post-Experiment Tool
 
-After running the experiment, use the `post-experiment` command to analyze results and generate predictions:
+After running the experiment, use the `post-experiment` command or the demo script to analyze results and generate predictions:
 
 ```bash
 # Analyze the latest experiment (replace with your experiment directory)
@@ -86,6 +108,9 @@ post-experiment experiments/titanic_survival_prediction_20250923_103134
 
 # Or run with automatic 'yes' to generate predictions
 echo "y" | post-experiment experiments/titanic_survival_prediction_20250923_103134
+
+# Use the demo script for automated analysis
+python scripts/post_experiment_demo.py experiments/ --force
 ```
 
 The post-experiment tool will:
@@ -94,6 +119,8 @@ The post-experiment tool will:
 - Display detailed information about the best performing model
 - Prompt for confirmation before generating test predictions
 - Create `test_predictions.csv` in the experiment directory
+
+The demo script additionally supports analyzing multiple experiments simultaneously and selecting the best model across all experiments.
 
 ## Experiment Directory Structure
 
@@ -117,13 +144,13 @@ experiments/titanic_survival_prediction_20250923_103134/
 
 ### Data Configuration
 
-Define your dataset structure and feature groups:
+Define your dataset structure and feature groups. Data files can be located anywhere - specify the full path or relative path from the project root:
 
 ```yaml
 # Example: ds_nailgun/configs/examples/titanic_data_config.yaml
 files:
-  train_data: ds_nailgun/data/titanic/train.csv
-  test_data: ds_nailgun/data/titanic/test.csv
+  train_data: data/titanic/train.csv
+  test_data: data/titanic/test.csv
 
 data:
   id:
@@ -170,6 +197,25 @@ post-experiment /path/to/experiment/directory
 # Skip confirmation prompts (for automation)
 post-experiment --force /path/to/experiment/directory
 ```
+
+### Post-Experiment Demo Script
+
+A convenient demo script is provided to showcase the post-experiment analysis capabilities:
+
+```bash
+# Analyze a single experiment
+python scripts/post_experiment_demo.py experiments/titanic_survival_prediction_20250923_103134 --force
+
+# Analyze all experiments in a directory
+python scripts/post_experiment_demo.py experiments/ --force
+```
+
+The demo script automatically:
+- Detects single experiments or multiple experiments in a folder
+- Loads and analyzes all trained models
+- Selects the best performing model across experiments
+- Generates test predictions
+- Provides usage examples for the `PostExperimentAnalyzer` class
 
 ## Advanced Usage
 
