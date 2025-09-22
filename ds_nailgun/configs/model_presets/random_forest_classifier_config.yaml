@@ -5,7 +5,7 @@ model:
   library: sklearn.ensemble
   parameters:
     n_estimators: 100
-    max_depth: None
+    max_depth: null
     min_samples_split: 2
     min_samples_leaf: 1
     random_state: 1986
