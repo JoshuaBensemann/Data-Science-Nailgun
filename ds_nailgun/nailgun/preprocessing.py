@@ -9,7 +9,6 @@ from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import (
     StandardScaler,
     OneHotEncoder,
-    LabelEncoder,
     MinMaxScaler,
     RobustScaler,
 )
@@ -48,186 +47,152 @@ class PreprocessingPipeline:
             "string": features.get("string", []),
         }
 
-    def create_pipeline(self):
-        """Create the preprocessing pipeline based on config."""
-        preprocessing_config = self.config.get("preprocessing", {})
+    def _create_feature_pipeline(self, feature_type, imputation_config, transform_config):
+        """Create a preprocessing pipeline for a specific feature type."""
+        if feature_type not in imputation_config:
+            return None
 
-        # Create transformers list for ColumnTransformer
+        cols = self.feature_columns.get(feature_type, [])
+        if not cols:
+            return None
+
+        impute_method = imputation_config[feature_type]["method"]
+
+        # Create imputer based on config
+        if impute_method == "constant":
+            fill_value = imputation_config[feature_type].get("fill_value", "missing" if feature_type == "categorical" else 0)
+            # Ensure categorical fill_value is string
+            if feature_type == "categorical" and not isinstance(fill_value, str):
+                fill_value = str(fill_value)
+            imputer = SimpleImputer(strategy="constant", fill_value=fill_value)
+        else:
+            imputer = SimpleImputer(strategy=impute_method)
+
+        # Apply transforms if specified in config
+        if transform_config and feature_type in transform_config:
+            method = transform_config[feature_type]["method"]
+
+            if method == "standard_scaler":
+                transformer = Pipeline([("imputer", imputer), ("scaler", StandardScaler())])
+            elif method == "min_max_scaler":
+                transformer = Pipeline([("imputer", imputer), ("scaler", MinMaxScaler())])
+            elif method == "robust_scaler":
+                transformer = Pipeline([("imputer", imputer), ("scaler", RobustScaler())])
+            elif method == "one_hot_encoding":
+                transformer = Pipeline([("imputer", imputer), ("encoder", OneHotEncoder(sparse_output=False, drop="first"))])
+            else:
+                # Unknown method, just impute
+                transformer = imputer
+        else:
+            # No transforms, just impute
+            transformer = imputer
+
+        return (f"{feature_type}_pipeline", transformer, cols)
+
+    def _create_imputation_transformers(self, preprocessing_config):
+        """Create transformers list for imputation and transforms."""
         transformers = []
 
-        # Handle different feature types with combined imputation + transformation
         if "imputation" in preprocessing_config:
             imputation_config = preprocessing_config["imputation"]
+            transform_config = preprocessing_config.get("transforms", {})
 
-            # Handle integer features
-            if "int" in imputation_config and self.feature_columns["int"]:
-                cols = self.feature_columns["int"]
-                method = imputation_config["int"]["method"]
+            # Loop through all feature types and create pipelines
+            for feature_type in ["int", "float", "categorical"]:
+                pipeline_info = self._create_feature_pipeline(
+                    feature_type, imputation_config, transform_config
+                )
+                if pipeline_info:
+                    transformers.append(pipeline_info)
 
-                if method == "constant":
-                    fill_value = imputation_config["int"].get("fill_value", 0)
-                    imputer = SimpleImputer(strategy="constant", fill_value=fill_value)
-                else:
-                    imputer = SimpleImputer(strategy=method)
+        return transformers
 
-                # Int features typically don't need scaling, just imputation
-                transformers.append(("int_pipeline", imputer, cols))
+    def _create_feature_selection_step(self, preprocessing_config, base_transformer):
+        """Create feature selection step if specified."""
+        if "feature_selection" not in preprocessing_config:
+            return base_transformer
 
-            # Handle float features
-            if "float" in imputation_config and self.feature_columns["float"]:
-                cols = self.feature_columns["float"]
-                impute_method = imputation_config["float"]["method"]
+        feature_select_config = preprocessing_config["feature_selection"]
+        method = feature_select_config.get("method")
 
-                if impute_method == "constant":
-                    fill_value = imputation_config["float"].get("fill_value", 0.0)
-                    imputer = SimpleImputer(strategy="constant", fill_value=fill_value)
-                else:
-                    imputer = SimpleImputer(strategy=impute_method)
+        if not method:
+            return base_transformer
 
-                # Check if we need scaling
-                transform_config = preprocessing_config.get("transforms", {})
-                if "float" in transform_config:
-                    method = transform_config["float"]["method"]
+        # Build a pipeline with preprocessing followed by feature selection
+        pipeline_steps = [("preprocessing", base_transformer)]
 
-                    if method == "standard_scaler":
-                        scaler = StandardScaler()
-                    elif method == "min_max_scaler":
-                        scaler = MinMaxScaler()
-                    elif method == "robust_scaler":
-                        scaler = RobustScaler()
-                    else:
-                        scaler = FunctionTransformer(lambda x: x)  # No-op
+        if method == "select_k_best":
+            # Get parameters for SelectKBest
+            params = feature_select_config.get("params", {})
+            k = params.get("k", 5)
+            score_func_name = params.get("score_func", "f_classif")
 
-                    # Create pipeline: impute -> scale
-                    float_pipeline = Pipeline(
-                        [("imputer", imputer), ("scaler", scaler)]
-                    )
-                    transformers.append(("float_pipeline", float_pipeline, cols))
-                else:
-                    # Just imputation
-                    transformers.append(("float_imputer", imputer, cols))
+            # Map score function names to actual functions
+            score_funcs = {
+                "f_classif": f_classif,
+                "chi2": chi2,
+                "mutual_info": mutual_info_classif,
+            }
+            score_func = score_funcs.get(score_func_name, f_classif)
 
-            # Handle categorical features
-            if (
-                "categorical" in imputation_config
-                and self.feature_columns["categorical"]
-            ):
-                cols = self.feature_columns["categorical"]
-                impute_method = imputation_config["categorical"]["method"]
+            # Create SelectKBest selector
+            selector = SelectKBest(score_func=score_func, k=k)
+            pipeline_steps.append(("feature_selection", selector))
 
-                if impute_method == "constant":
-                    fill_value = imputation_config["categorical"].get(
-                        "fill_value", "missing"
-                    )
-                    # Ensure fill_value is a string for categorical data
-                    if not isinstance(fill_value, str):
-                        fill_value = str(fill_value)
-                    imputer = SimpleImputer(strategy="constant", fill_value=fill_value)
-                else:
-                    imputer = SimpleImputer(strategy=impute_method)
+        elif method == "variance_threshold":
+            # Get parameters for VarianceThreshold
+            params = feature_select_config.get("params", {})
+            threshold = params.get("threshold", 0.0)
 
-                # Check if we need encoding
-                transform_config = preprocessing_config.get("transforms", {})
-                if "categorical" in transform_config:
-                    method = transform_config["categorical"]["method"]
+            # Create VarianceThreshold selector
+            selector = VarianceThreshold(threshold=threshold)
+            pipeline_steps.append(("feature_selection", selector))
 
-                    if method == "one_hot_encoding":
-                        encoder = OneHotEncoder(sparse_output=False, drop="first")
-                        # Create pipeline: impute -> encode
-                        cat_pipeline = Pipeline(
-                            [("imputer", imputer), ("encoder", encoder)]
-                        )
-                        transformers.append(
-                            ("categorical_pipeline", cat_pipeline, cols)
-                        )
-                    elif method == "label_encoding":
-                        # Label encoding needs special handling
-                        encoder = LabelEncoder()
-                        # For now, just impute
-                        transformers.append(("categorical_imputer", imputer, cols))
-                    else:
-                        # Just imputation
-                        transformers.append(("categorical_imputer", imputer, cols))
-                else:
-                    # Just imputation
-                    transformers.append(("categorical_imputer", imputer, cols))
+        elif method == "rfe":
+            # Get parameters for RFE
+            params = feature_select_config.get("params", {})
+            n_features = params.get("n_features", 5)
+            step = params.get("step", 1)
+            estimator_name = params.get("estimator", "logistic_regression")
 
-        # Create initial column transformer for preprocessing
-        if transformers:
-            column_transformer = ColumnTransformer(
-                transformers=transformers,
-                remainder="drop",  # Drop columns not specified in transformers
-            )
-        else:
-            # No transformations specified
-            column_transformer = FunctionTransformer(lambda x: x)
-
-        # Handle feature selection if specified
-        if "feature_selection" in preprocessing_config:
-            feature_select_config = preprocessing_config["feature_selection"]
-            method = feature_select_config.get("method")
-
-            if method:
-                # Build a pipeline with preprocessing followed by feature selection
-                pipeline_steps = [("preprocessing", column_transformer)]
-
-                if method == "select_k_best":
-                    # Get parameters for SelectKBest
-                    params = feature_select_config.get("params", {})
-                    k = params.get("k", 5)
-                    score_func_name = params.get("score_func", "f_classif")
-
-                    # Map score function names to actual functions
-                    score_funcs = {
-                        "f_classif": f_classif,
-                        "chi2": chi2,
-                        "mutual_info": mutual_info_classif,
-                    }
-                    score_func = score_funcs.get(score_func_name, f_classif)
-
-                    # Create SelectKBest selector
-                    selector = SelectKBest(score_func=score_func, k=k)
-                    pipeline_steps.append(("feature_selection", selector))
-
-                elif method == "variance_threshold":
-                    # Get parameters for VarianceThreshold
-                    params = feature_select_config.get("params", {})
-                    threshold = params.get("threshold", 0.0)
-
-                    # Create VarianceThreshold selector
-                    selector = VarianceThreshold(threshold=threshold)
-                    pipeline_steps.append(("feature_selection", selector))
-
-                elif method == "rfe":
-                    # Get parameters for RFE
-                    params = feature_select_config.get("params", {})
-                    n_features = params.get("n_features", 5)
-                    step = params.get("step", 1)
-                    estimator_name = params.get("estimator", "logistic_regression")
-
-                    # Create estimator for RFE
-                    if estimator_name == "logistic_regression":
-                        estimator = LogisticRegression(max_iter=1000)
-                    else:
-                        # Default to logistic regression
-                        estimator = LogisticRegression(max_iter=1000)
-
-                    # Create RFE selector
-                    selector = RFE(
-                        estimator=estimator, n_features_to_select=n_features, step=step
-                    )
-                    pipeline_steps.append(("feature_selection", selector))
-
-                # Create the full pipeline
-                self.pipeline = Pipeline(steps=pipeline_steps)
+            # Create estimator for RFE
+            if estimator_name == "logistic_regression":
+                estimator = LogisticRegression(max_iter=1000)
             else:
-                # No feature selection method specified, just use column transformer
-                self.pipeline = column_transformer
-        else:
-            # No feature selection specified, just use column transformer
-            self.pipeline = column_transformer
+                # Default to logistic regression
+                estimator = LogisticRegression(max_iter=1000)
 
-        return self.pipeline
+            # Create RFE selector
+            selector = RFE(
+                estimator=estimator, n_features_to_select=n_features, step=step
+            )
+            pipeline_steps.append(("feature_selection", selector))
+
+        # Create the full pipeline
+        return Pipeline(steps=pipeline_steps)
+
+    def create_pipeline(self):
+        """
+        Create the preprocessing pipeline based on config.
+
+        Returns:
+            Pipeline, ColumnTransformer, or FunctionTransformer: The configured preprocessing pipeline.
+        """
+        preprocessing_config = self.config.get("preprocessing", {})
+
+        # Create imputation and transform transformers
+        transformers = self._create_imputation_transformers(preprocessing_config)
+
+        # Create base transformer (ColumnTransformer or passthrough)
+        if transformers:
+            base_transformer = ColumnTransformer(transformers=transformers, remainder="drop")
+        else:
+            base_transformer = FunctionTransformer(func=None)
+
+        # Add feature selection if specified
+        final_pipeline = self._create_feature_selection_step(preprocessing_config, base_transformer)
+
+        return final_pipeline
 
 
 def create_preprocessing_pipeline(config_path):
