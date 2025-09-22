@@ -1,6 +1,6 @@
 [project]
 name = "data-science-nailgun"
-version = "0.1.0"
+version = "0.2.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -10,3 +10,13 @@ dependencies = [
     "xgboost",
     "pandas"
 ]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["ds_nailgun*"]
+
+[project.scripts]
+post-experiment = "ds_nailgun.nailgun.post_experiment:main"
