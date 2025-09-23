@@ -461,76 +461,188 @@ class ExperimentController:
                     self.logger.info(
                         f"  Experiment {experiment_name} trained successfully"
                     )
+
+                    # Save this model immediately after training
+                    if self.output_dir:
+                        self.save_single_model(experiment_name)
+                        self.save_single_hyperparameter_results(experiment_name)
+                        self.update_experiment_summary(experiment_name)
+
                     pbar.update(1)
 
         self.logger.info(f"Completed training {experiment_count} model experiments")
         return self.trained_pipelines
 
-    def save_models(self):
-        """Save trained model pipelines to the timestamped output directory."""
-        if not self.trained_pipelines or not self.output_dir:
+    def save_single_model(self, experiment_name: str):
+        """Save a single trained model pipeline."""
+        if not self.output_dir or experiment_name not in self.trained_pipelines:
             return
 
         save_format = self.output_config.get("save_format", "joblib")
+        experiment_info = self.trained_pipelines[experiment_name]
+        pipeline = experiment_info["pipeline"]
+        model_name = experiment_info["model_name"]
 
-        for experiment_name, experiment_info in tqdm(
-            self.trained_pipelines.items(), desc="Saving models", unit="model"
-        ):
-            pipeline = experiment_info["pipeline"]
-            model_name = experiment_info["model_name"]
+        # Get the actual model name (handle hypertuning)
+        if hasattr(pipeline.named_steps["model"], "best_estimator_"):
+            actual_model_name = type(
+                pipeline.named_steps["model"].best_estimator_
+            ).__name__
+        else:
+            actual_model_name = model_name
 
-            # Get the actual model name (handle hypertuning)
-            if hasattr(pipeline.named_steps["model"], "best_estimator_"):
-                actual_model_name = type(
-                    pipeline.named_steps["model"].best_estimator_
-                ).__name__
-            else:
-                actual_model_name = model_name
+        filename = (
+            f"pipeline_{experiment_name}_{actual_model_name.lower()}.{save_format}"
+        )
+        filepath = os.path.join(self.models_dir, filename)
 
-            filename = (
-                f"pipeline_{experiment_name}_{actual_model_name.lower()}.{save_format}"
+        if save_format in SAVE_FORMATS:
+            if save_format == "joblib":
+                joblib.dump(pipeline, filepath)
+            elif save_format == "pickle":
+                import pickle
+
+                with open(filepath, "wb") as f:
+                    pickle.dump(pipeline, f)
+
+        self.logger.info(f"Saved model {experiment_name} to {filepath}")
+
+    def save_single_hyperparameter_results(self, experiment_name: str):
+        """Save hyperparameter tuning results for a single experiment."""
+        if not self.output_dir or experiment_name not in self.trained_pipelines:
+            return
+
+        experiment_info = self.trained_pipelines[experiment_name]
+        pipeline = experiment_info["pipeline"]
+
+        # Check if this pipeline used hypertuning
+        if hasattr(pipeline.named_steps["model"], "cv_results_"):
+            cv_results = pipeline.named_steps["model"].cv_results_
+
+            # Save detailed results as CSV
+            results_file = os.path.join(
+                self.results_dir, f"hypertuning_{experiment_name}.csv"
             )
-            filepath = os.path.join(self.models_dir, filename)
 
-            if save_format in SAVE_FORMATS:
-                if save_format == "joblib":
-                    joblib.dump(pipeline, filepath)
-                elif save_format == "pickle":
-                    import pickle
+            # Convert cv_results to DataFrame and save as CSV
+            df_results = pd.DataFrame(cv_results)
+            df_results.to_csv(results_file, index=False)
 
-                    with open(filepath, "wb") as f:
-                        pickle.dump(pipeline, f)
+            self.logger.info(
+                f"Saved hyperparameter results for {experiment_name} to {results_file}"
+            )
 
-            self.logger.info(f"Saved model {experiment_name} to {filepath}")
+    def update_experiment_summary(self, experiment_name: str):
+        """Update the experiment summary with a newly completed experiment."""
+        if not self.output_dir or experiment_name not in self.trained_pipelines:
+            return
 
-    def save_hyperparameter_results(self):
-        """Save detailed hyperparameter tuning results."""
+        summary_file = os.path.join(self.output_dir, EXPERIMENT_SUMMARY_FILE)
+
+        # Load existing summary or create new one
+        if os.path.exists(summary_file):
+            with open(summary_file, "r") as f:
+                summary = yaml.safe_load(f)
+        else:
+            summary = {
+                "experiment": self.experiment_config["experiment"],
+                "timestamp": datetime.now().isoformat(),
+                "output_directory": self.output_dir,
+                "data_configs": [],
+                "model_configs": [],
+                "experiments_run": [],
+            }
+
+            # Add data config summaries (only once)
+            for data_config_info in self.configs["data"]:
+                summary["data_configs"].append(
+                    {
+                        "name": data_config_info["name"],
+                        "path": data_config_info["path"],
+                        "features": list(
+                            data_config_info["config"]["data"]["features"].keys()
+                        ),
+                    }
+                )
+
+            # Add model config summaries (only once)
+            for model_config_info in self.configs["models"]:
+                model_config = model_config_info["config"]
+                summary["model_configs"].append(
+                    {
+                        "path": model_config_info["path"],
+                        "model_type": model_config.get("model", {}).get(
+                            "type", DEFAULT_MODEL_TYPE
+                        ),
+                        "hypertuning": "hypertuning" in model_config,
+                    }
+                )
+
+        # Add this experiment to the summary
+        experiment_info = self.trained_pipelines[experiment_name]
+        pipeline = experiment_info["pipeline"]
+        best_score = None
+
+        if hasattr(pipeline.named_steps["model"], "best_score_"):
+            # Convert numpy scalar to regular Python float for human readability
+            best_score = float(pipeline.named_steps["model"].best_score_)
+
+        # Check if this experiment is already in the summary
+        existing_experiment = None
+        for exp in summary["experiments_run"]:
+            if exp["name"] == experiment_name:
+                existing_experiment = exp
+                break
+
+        if existing_experiment:
+            # Update existing entry
+            existing_experiment.update(
+                {
+                    "data_config": experiment_info["data_config"],
+                    "model_config": experiment_info["model_config"],
+                    "model_name": experiment_info["model_name"],
+                    "best_cv_score": best_score,
+                }
+            )
+        else:
+            # Add new entry
+            summary["experiments_run"].append(
+                {
+                    "name": experiment_name,
+                    "data_config": experiment_info["data_config"],
+                    "model_config": experiment_info["model_config"],
+                    "model_name": experiment_info["model_name"],
+                    "best_cv_score": best_score,
+                }
+            )
+
+        # Save updated summary
+        with open(summary_file, "w") as f:
+            yaml.dump(summary, f, default_flow_style=False, indent=2)
+
+        self.logger.info(f"Updated experiment summary with {experiment_name}")
+
+    def save_models(self):
+        """Save all remaining trained model pipelines (for backward compatibility)."""
         if not self.trained_pipelines or not self.output_dir:
             return
 
-        for experiment_name, experiment_info in tqdm(
-            self.trained_pipelines.items(),
-            desc="Saving hyperparameter results",
+        for experiment_name in tqdm(
+            self.trained_pipelines.keys(), desc="Saving remaining models", unit="model"
+        ):
+            self.save_single_model(experiment_name)
+
+    def save_hyperparameter_results(self):
+        """Save all remaining hyperparameter tuning results (for backward compatibility)."""
+        if not self.trained_pipelines or not self.output_dir:
+            return
+
+        for experiment_name in tqdm(
+            self.trained_pipelines.keys(),
+            desc="Saving remaining hyperparameter results",
             unit="result",
         ):
-            pipeline = experiment_info["pipeline"]
-
-            # Check if this pipeline used hypertuning
-            if hasattr(pipeline.named_steps["model"], "cv_results_"):
-                cv_results = pipeline.named_steps["model"].cv_results_
-
-                # Save detailed results as CSV
-                results_file = os.path.join(
-                    self.results_dir, f"hypertuning_{experiment_name}.csv"
-                )
-
-                # Convert cv_results to DataFrame and save as CSV
-                df_results = pd.DataFrame(cv_results)
-                df_results.to_csv(results_file, index=False)
-
-                self.logger.info(
-                    f"Saved hyperparameter results for {experiment_name} to {results_file}"
-                )
+            self.save_single_hyperparameter_results(experiment_name)
 
     def save_config_summary(self):
         """Save a summary of all configurations used in the experiment."""
@@ -674,17 +786,15 @@ class ExperimentController:
         self.setup_models()
         self.logger.info("✅ Models setup completed")
 
-        # Step 5: Train models
+        # Step 5: Train models (includes incremental saving)
         self.logger.info("🏋️ Step 5: Training models...")
         self.train_models()
         self.logger.info("✅ Model training completed")
 
-        # Step 6: Save results
-        self.logger.info("💾 Step 6: Saving results...")
-        self.save_models()
-        self.save_hyperparameter_results()
+        # Step 6: Finalize results (configs and summary updates)
+        self.logger.info("💾 Step 6: Finalizing results...")
         self.save_config_summary()
-        self.logger.info("✅ Results saved successfully")
+        self.logger.info("✅ Results finalized successfully")
 
         self.logger.info("🎉 Experiment complete!")
         self.logger.info(f"All results saved to: {self.output_dir}")
@@ -739,17 +849,15 @@ if __name__ == "__main__":
 
     print(f"Running experiment from config: {experiment_config_path}")
 
-    # Run experiment
+    # Run experiment (models are saved incrementally during training)
     controller = run_experiment(experiment_config_path)
 
-    # Save trained pipelines (if output config exists)
+    # Check results
     if controller.output_config and controller.output_dir:
-        controller.save_models()
-        controller.save_hyperparameter_results()
-        controller.save_config_summary()
-        print(f"\\n✓ All results saved to: {controller.output_dir}")
+        print(f"\n✓ All results saved incrementally to: {controller.output_dir}")
         print(f"  Models: {controller.models_dir}")
         print(f"  Results: {controller.results_dir}")
         print(f"  Logs: {controller.logs_dir}")
+        print(f"  Trained {len(controller.trained_pipelines)} model pipelines")
     else:
-        print("\\n⚠ No output directory configured - results not saved")
+        print("\n⚠ No output directory configured - results not saved")

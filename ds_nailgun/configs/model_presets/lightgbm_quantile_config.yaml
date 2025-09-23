@@ -15,7 +15,6 @@ model:
     # Quantile regression specific parameters
     objective: 'quantile'
     alpha: 0.9  # Quantile level (0.9 = 90th percentile)
-    early_stopping_round: 50  # Enable early stopping for quantile regression
 
 # Optional hyperparameter tuning configuration
 hypertuning:
