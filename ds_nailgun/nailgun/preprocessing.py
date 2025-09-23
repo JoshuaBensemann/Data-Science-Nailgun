@@ -22,6 +22,8 @@ from sklearn.feature_selection import (
 )
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LogisticRegression
+from sklearn.base import BaseEstimator, TransformerMixin
+import pandas as pd
 import logging
 from tqdm import tqdm
 import joblib
@@ -35,6 +37,39 @@ from .consts import (
     DEFAULT_CONSTANT_FILL_VALUE,
     STRING_FEATURE_GROUPS,
 )
+
+
+class DataFramePreservingTransformer(BaseEstimator, TransformerMixin):
+    """Transformer that preserves pandas DataFrame structure and feature names."""
+
+    def __init__(self, transformer):
+        self.transformer = transformer
+        self.feature_names_in_ = None
+
+    def fit(self, X, y=None):
+        if hasattr(X, "columns"):
+            self.feature_names_in_ = X.columns.tolist()
+        self.transformer.fit(X, y)
+        return self
+
+    def transform(self, X):
+        # If input is a DataFrame, preserve structure
+        if hasattr(X, "columns") and hasattr(self.transformer, "get_feature_names_out"):
+            try:
+                # Try to get output feature names
+                X_transformed = self.transformer.transform(X)
+                if hasattr(X_transformed, "shape") and len(X_transformed.shape) == 2:
+                    feature_names = self.transformer.get_feature_names_out(X.columns)
+                    return pd.DataFrame(
+                        X_transformed, columns=feature_names, index=X.index
+                    )
+                else:
+                    return X_transformed
+            except Exception:
+                # Fallback to regular transform
+                return self.transformer.transform(X)
+        else:
+            return self.transformer.transform(X)
 
 
 class PreprocessingPipeline:
@@ -281,6 +316,10 @@ class PreprocessingPipeline:
 
         if final_pipeline != base_transformer:
             self.logger.info("Added feature selection step to pipeline")
+
+        # Wrap with DataFramePreservingTransformer to maintain DataFrame structure
+        final_pipeline = DataFramePreservingTransformer(final_pipeline)
+        self.logger.info("Wrapped pipeline with DataFramePreservingTransformer")
 
         self.logger.info("Preprocessing pipeline creation completed")
         return final_pipeline

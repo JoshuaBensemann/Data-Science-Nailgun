@@ -15,11 +15,6 @@ model:
     # Quantile regression specific parameters
     objective: 'quantile'
     alpha: 0.9  # Quantile level (0.9 = 90th percentile)
-    # Parameters to prevent feature name warnings during CV
-    feature_pre_filter: false  # Disable feature pre-filtering to avoid warnings
-    boosting_type: 'gbdt'  # Explicit boosting type
-    feature_name: 'auto'  # Auto-generate feature names to avoid mismatches
-    categorical_feature: 'auto'  # Auto-detect categorical features
 
 # Optional hyperparameter tuning configuration
 hypertuning:
@@ -33,7 +28,6 @@ hypertuning:
     feature_fraction: [0.6, 0.7, 0.8, 0.9, 1.0]  # LightGBM's feature fraction parameter
     num_leaves: [20, 31, 50, 100, 150]  # Added num_leaves for better control
     min_child_samples: [10, 20, 30, 50, 100]  # Added min_child_samples
-    verbosity: [-1]  # Silent during tuning to reduce output
   cv: 3  # Cross-validation folds
   scoring:
     name: 'pinball_loss'
