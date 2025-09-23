@@ -17,6 +17,7 @@ import pandas as pd
 from .dataloader import DataLoader
 from .preprocessing import create_preprocessing_pipeline
 from .model_factory import create_model
+from .consts import HYPERTUNING_METHODS, SCORING_NAMES, SAVE_FORMATS
 from tqdm import tqdm
 
 
@@ -262,7 +263,7 @@ class ExperimentController:
                     estimator = model
                     if (
                         "hypertuning" in full_config
-                        and full_config["hypertuning"]["method"] == "grid_search"
+                        and full_config["hypertuning"]["method"] in HYPERTUNING_METHODS
                     ):
                         hypertuning_config = full_config["hypertuning"]
 
@@ -276,7 +277,7 @@ class ExperimentController:
                         else:
                             # New format: scoring is a dict with name and optional parameters
                             scoring_name = scoring_config.get("name", "accuracy")
-                            if scoring_name == "pinball_loss":
+                            if scoring_name in SCORING_NAMES:
                                 alpha = scoring_config.get(
                                     "alpha", 0.5
                                 )  # Default to median if not specified
@@ -367,13 +368,14 @@ class ExperimentController:
             )
             filepath = os.path.join(self.models_dir, filename)
 
-            if save_format == "joblib":
-                joblib.dump(pipeline, filepath)
-            elif save_format == "pickle":
-                import pickle
+            if save_format in SAVE_FORMATS:
+                if save_format == "joblib":
+                    joblib.dump(pipeline, filepath)
+                elif save_format == "pickle":
+                    import pickle
 
-                with open(filepath, "wb") as f:
-                    pickle.dump(pipeline, f)
+                    with open(filepath, "wb") as f:
+                        pickle.dump(pipeline, f)
 
             self.logger.info(f"Saved model {experiment_name} to {filepath}")
 

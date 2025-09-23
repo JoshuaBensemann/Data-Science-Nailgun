@@ -10,6 +10,7 @@ model:
     subsample: 0.8
     colsample_bytree: 0.8
     random_state: 1986
+    verbosity: 2  # Increased verbosity: 0=silent, 1=warning, 2=info, 3=debug
 
 # Optional hyperparameter tuning configuration
 hypertuning:
@@ -20,6 +21,7 @@ hypertuning:
     learning_rate: [0.1, 0.2]
     subsample: [0.8, 1.0]
     colsample_bytree: [0.8, 1.0]
+    verbosity: [2]  # Keep verbosity at info level during tuning
   cv: 5
   scoring:
     name: 'accuracy'

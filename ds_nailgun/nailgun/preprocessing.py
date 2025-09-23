@@ -18,14 +18,21 @@ from sklearn.feature_selection import (
     SelectKBest,
     VarianceThreshold,
     RFE,
-    f_classif,
-    chi2,
-    mutual_info_classif,
 )
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LogisticRegression
 import logging
 from tqdm import tqdm
+from .consts import (
+    SCORE_FUNCS,
+    DEFAULT_K_BEST,
+    DEFAULT_VARIANCE_THRESHOLD,
+    DEFAULT_RFE_N_FEATURES,
+    DEFAULT_RFE_STEP,
+    DEFAULT_LOGISTIC_REGRESSION_MAX_ITER,
+    DEFAULT_CONSTANT_FILL_VALUE,
+    STRING_FEATURE_GROUPS,
+)
 
 
 class PreprocessingPipeline:
@@ -42,6 +49,9 @@ class PreprocessingPipeline:
 
         self.pipeline = None
         self.feature_columns = self._get_feature_columns()
+        self.is_regression = (
+            self.config.get("data", {}).get("target", {}).get("classes", 1) == 0
+        )
 
     def _get_feature_columns(self):
         """Get feature columns organized by user-defined feature groups."""
@@ -73,9 +83,11 @@ class PreprocessingPipeline:
 
         # Create imputer based on config
         if impute_method == "constant":
-            fill_value = imputation_config[feature_group].get("fill_value", "missing")
+            fill_value = imputation_config[feature_group].get(
+                "fill_value", DEFAULT_CONSTANT_FILL_VALUE
+            )
             # For categorical-like features, ensure fill_value is appropriate
-            if feature_group.lower() in ["categorical", "string"] and not isinstance(
+            if feature_group.lower() in STRING_FEATURE_GROUPS and not isinstance(
                 fill_value, str
             ):
                 fill_value = str(fill_value)
@@ -165,16 +177,13 @@ class PreprocessingPipeline:
         if method == "select_k_best":
             # Get parameters for SelectKBest
             params = feature_select_config.get("params", {})
-            k = params.get("k", 5)
-            score_func_name = params.get("score_func", "f_classif")
+            k = params.get("k", DEFAULT_K_BEST)
+            score_func_name = params.get("score_func")
+            if not score_func_name:
+                score_func_name = "f_regression" if self.is_regression else "f_classif"
 
             # Map score function names to actual functions
-            score_funcs = {
-                "f_classif": f_classif,
-                "chi2": chi2,
-                "mutual_info": mutual_info_classif,
-            }
-            score_func = score_funcs.get(score_func_name, f_classif)
+            score_func = SCORE_FUNCS.get(score_func_name, SCORE_FUNCS["f_classif"])
 
             # Create SelectKBest selector
             selector = SelectKBest(score_func=score_func, k=k)
@@ -183,7 +192,7 @@ class PreprocessingPipeline:
         elif method == "variance_threshold":
             # Get parameters for VarianceThreshold
             params = feature_select_config.get("params", {})
-            threshold = params.get("threshold", 0.0)
+            threshold = params.get("threshold", DEFAULT_VARIANCE_THRESHOLD)
 
             # Create VarianceThreshold selector
             selector = VarianceThreshold(threshold=threshold)
@@ -192,16 +201,20 @@ class PreprocessingPipeline:
         elif method == "rfe":
             # Get parameters for RFE
             params = feature_select_config.get("params", {})
-            n_features = params.get("n_features", 5)
-            step = params.get("step", 1)
+            n_features = params.get("n_features", DEFAULT_RFE_N_FEATURES)
+            step = params.get("step", DEFAULT_RFE_STEP)
             estimator_name = params.get("estimator", "logistic_regression")
 
             # Create estimator for RFE
             if estimator_name == "logistic_regression":
-                estimator = LogisticRegression(max_iter=1000)
+                estimator = LogisticRegression(
+                    max_iter=DEFAULT_LOGISTIC_REGRESSION_MAX_ITER
+                )
             else:
                 # Default to logistic regression
-                estimator = LogisticRegression(max_iter=1000)
+                estimator = LogisticRegression(
+                    max_iter=DEFAULT_LOGISTIC_REGRESSION_MAX_ITER
+                )
 
             # Create RFE selector
             selector = RFE(

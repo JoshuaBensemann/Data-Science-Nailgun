@@ -10,6 +10,7 @@ model:
     subsample: 0.8
     colsample_bytree: 0.8
     random_state: 1986
+    verbosity: 1  # Increased verbosity for more detailed output
     # Quantile regression specific parameters
     objective: 'quantile'
     alpha: 0.9  # Quantile level (0.9 = 90th percentile)
@@ -23,6 +24,7 @@ hypertuning:
     learning_rate: [0.01, 0.1, 0.2]
     subsample: [0.8, 1.0]
     colsample_bytree: [0.8, 1.0]
+    verbosity: [1]  # Keep verbosity at info level during tuning
   cv: 5
   scoring:
     name: 'pinball_loss'
