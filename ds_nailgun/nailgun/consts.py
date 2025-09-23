@@ -47,9 +47,22 @@ ESTIMATOR_NAMES = ["logistic_regression"]
 STRING_FEATURE_GROUPS = ["categorical", "string"]
 
 # Controller constants
-HYPERTUNING_METHODS = ["grid_search", "random_search"]
+HYPERTUNING_METHODS = [
+    "grid_search",
+    "random_search",
+    "halving_grid_search",
+    "halving_random_search",
+]
 SCORING_NAMES = ["pinball_loss"]
 SAVE_FORMATS = ["joblib", "pickle"]
+
+# Halving search defaults
+DEFAULT_HALVING_FACTOR = 3
+DEFAULT_HALVING_RESOURCE = "n_estimators"
+DEFAULT_HALVING_MAX_RESOURCES = "auto"
+DEFAULT_HALVING_MIN_RESOURCES = "exhaust"
+DEFAULT_HALVING_N_JOBS = 1
+DEFAULT_HALVING_N_CANDIDATES = 50
 
 # Directory names
 DEFAULT_BASE_DIR = "experiments"

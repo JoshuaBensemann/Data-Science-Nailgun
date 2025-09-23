@@ -19,19 +19,23 @@ model:
 
 # Optional hyperparameter tuning configuration
 hypertuning:
-  method: "random_search"  # Options: "grid_search", "random_search"
+  method: "halving_random_search"  # Successive halving with random search for efficient large-scale optimization
+  n_candidates: 100  # Number of candidate parameter combinations to evaluate initially
   n_iter: 20  # Number of parameter combinations to try
   parameters:
-    n_estimators: [100, 200, 500, 1000]
     max_depth: [3, 4, 5, 6, 8, 10, -1]  # -1 means no limit
     learning_rate: [0.01, 0.05, 0.1, 0.2, 0.3]
     subsample: [0.6, 0.7, 0.8, 0.9, 1.0]
     colsample_bytree: [0.6, 0.7, 0.8, 0.9, 1.0]
-    num_leaves: [20, 31, 50, 100]  # Added num_leaves for better control
-    min_child_samples: [10, 20, 30, 50]  # Added min_child_samples
+    num_leaves: [20, 31, 50, 100, 150]  # Added num_leaves for better control
+    min_child_samples: [10, 20, 30, 50, 100]  # Added min_child_samples
     verbosity: [-1]  # Silent during tuning
-  cv: 3  # Reduced from 5 to 3 for speed
+  cv: 3  # Cross-validation folds
   scoring:
     name: 'pinball_loss'
     alpha: 0.9  # Quantile level for pinball loss scoring
-  n_jobs: 1  # Use single core to avoid joblib resource leaks
+  n_jobs: 1  # Halving search doesn't parallelize well
+  factor: 3  # Halving factor - eliminate 2/3 of candidates each round
+  resource: 'n_estimators'  # Resource parameter to optimize (number of trees)
+  max_resources: 1000  # Maximum resources (n_estimators) to use
+  min_resources: 50  # Minimum resources to start with

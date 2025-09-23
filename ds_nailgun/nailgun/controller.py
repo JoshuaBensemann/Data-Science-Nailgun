@@ -1,5 +1,13 @@
 """
-Data Science Experiment Controller
+Datimport yaml
+import logging
+import joblib
+import os
+from datetime import datetime
+from sklearn.pipeline import Pipeline
+from sklearn.experimental import enable_halving_search_cv  # noqa
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, HalvingGridSearchCV
+from sklearn.metrics import make_scorer, mean_pinball_loss Experiment Controller
 
 Orchestrates data science experiments by coordinating
 multiple modules and configuration files.
@@ -11,7 +19,13 @@ import joblib
 import os
 from datetime import datetime
 from sklearn.pipeline import Pipeline
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+from sklearn.experimental import enable_halving_search_cv  # noqa
+from sklearn.model_selection import (
+    GridSearchCV,
+    RandomizedSearchCV,
+    HalvingGridSearchCV,
+    HalvingRandomSearchCV,
+)
 from sklearn.metrics import make_scorer, mean_pinball_loss
 import pandas as pd
 from .dataloader import DataLoader
@@ -36,6 +50,12 @@ from .consts import (
     DEFAULT_LOG_LEVEL,
     DEFAULT_LOG_FORMAT,
     TIMESTAMP_FORMAT,
+    DEFAULT_HALVING_FACTOR,
+    DEFAULT_HALVING_RESOURCE,
+    DEFAULT_HALVING_MAX_RESOURCES,
+    DEFAULT_HALVING_MIN_RESOURCES,
+    DEFAULT_HALVING_N_JOBS,
+    DEFAULT_HALVING_N_CANDIDATES,
 )
 from tqdm import tqdm
 
@@ -338,7 +358,64 @@ class ExperimentController:
                             self.logger.info(
                                 f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Random Search ({n_iter} iterations)"
                             )
-                    else:
+                        elif method == "halving_grid_search":
+                            estimator = HalvingGridSearchCV(
+                                model,
+                                param_grid=hypertuning_config["parameters"],
+                                cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
+                                scoring=scoring,
+                                verbose=DEFAULT_GRID_SEARCH_VERBOSE,
+                                n_jobs=hypertuning_config.get(
+                                    "n_jobs", DEFAULT_HALVING_N_JOBS
+                                ),  # Halving doesn't support parallel well
+                                random_state=42,  # For reproducibility
+                                factor=hypertuning_config.get(
+                                    "factor", DEFAULT_HALVING_FACTOR
+                                ),  # Default halving factor
+                                resource=hypertuning_config.get(
+                                    "resource", DEFAULT_HALVING_RESOURCE
+                                ),  # Resource to allocate
+                                max_resources=hypertuning_config.get(
+                                    "max_resources", DEFAULT_HALVING_MAX_RESOURCES
+                                ),  # Max resources parameter
+                                min_resources=hypertuning_config.get(
+                                    "min_resources", DEFAULT_HALVING_MIN_RESOURCES
+                                ),  # Min resources parameter
+                            )
+                            self.logger.info(
+                                f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Halving Grid Search"
+                            )
+                        elif method == "halving_random_search":
+                            n_candidates = hypertuning_config.get(
+                                "n_candidates", DEFAULT_HALVING_N_CANDIDATES
+                            )  # Default number of candidates
+                            estimator = HalvingRandomSearchCV(
+                                model,
+                                param_distributions=hypertuning_config["parameters"],
+                                n_candidates=n_candidates,
+                                cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
+                                scoring=scoring,
+                                verbose=DEFAULT_GRID_SEARCH_VERBOSE,
+                                n_jobs=hypertuning_config.get(
+                                    "n_jobs", DEFAULT_HALVING_N_JOBS
+                                ),  # Halving doesn't support parallel well
+                                random_state=42,  # For reproducibility
+                                factor=hypertuning_config.get(
+                                    "factor", DEFAULT_HALVING_FACTOR
+                                ),  # Default halving factor
+                                resource=hypertuning_config.get(
+                                    "resource", DEFAULT_HALVING_RESOURCE
+                                ),  # Resource to allocate
+                                max_resources=hypertuning_config.get(
+                                    "max_resources", DEFAULT_HALVING_MAX_RESOURCES
+                                ),  # Max resources parameter
+                                min_resources=hypertuning_config.get(
+                                    "min_resources", DEFAULT_HALVING_MIN_RESOURCES
+                                ),  # Min resources parameter
+                            )
+                            self.logger.info(
+                                f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Halving Random Search ({n_candidates} candidates)"
+                            )
                         self.logger.info(
                             f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__}"
                         )
@@ -367,7 +444,15 @@ class ExperimentController:
                     }
 
                     # Print best parameters if hypertuning was used
-                    if isinstance(estimator, (GridSearchCV, RandomizedSearchCV)):
+                    if isinstance(
+                        estimator,
+                        (
+                            GridSearchCV,
+                            RandomizedSearchCV,
+                            HalvingGridSearchCV,
+                            HalvingRandomSearchCV,
+                        ),
+                    ):
                         self.logger.info(f"  Best parameters: {estimator.best_params_}")
                         self.logger.info(
                             f"  Best cross-validation score: {estimator.best_score_:.4f}"
