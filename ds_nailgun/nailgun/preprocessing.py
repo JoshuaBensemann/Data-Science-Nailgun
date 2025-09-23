@@ -24,6 +24,8 @@ from sklearn.feature_selection import (
 )
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LogisticRegression
+import logging
+from tqdm import tqdm
 
 
 class PreprocessingPipeline:
@@ -31,8 +33,12 @@ class PreprocessingPipeline:
 
     def __init__(self, config_path):
         """Initialize with YAML config file path."""
+        self.logger = logging.getLogger(__name__)
         with open(config_path, "r") as file:
             self.config = yaml.safe_load(file)
+        self.logger.info(
+            f"PreprocessingPipeline initialized with config: {config_path}"
+        )
 
         self.pipeline = None
         self.feature_columns = self._get_feature_columns()
@@ -41,20 +47,29 @@ class PreprocessingPipeline:
         """Get feature columns organized by user-defined feature groups."""
         features = self.config["data"]["features"]
         # Return all feature groups as defined in config, no hardcoded types
+        self.logger.debug(f"Feature groups found: {list(features.keys())}")
+        for group, cols in features.items():
+            self.logger.debug(
+                f"Feature group '{group}': {len(cols) if isinstance(cols, list) else 'not a list'} columns"
+            )
         return features
 
     def _create_feature_pipeline(
         self, feature_group, imputation_config, transform_config
     ):
         """Create a preprocessing pipeline for a specific user-defined feature group."""
+        self.logger.debug(f"Creating pipeline for feature group: {feature_group}")
         if feature_group not in imputation_config:
+            self.logger.debug(f"No imputation config for {feature_group}, skipping")
             return None
 
         cols = self.feature_columns.get(feature_group, [])
         if not cols:
+            self.logger.debug(f"No columns for feature group {feature_group}, skipping")
             return None
 
         impute_method = imputation_config[feature_group]["method"]
+        self.logger.debug(f"Imputation method for {feature_group}: {impute_method}")
 
         # Create imputer based on config
         if impute_method == "constant":
@@ -71,6 +86,7 @@ class PreprocessingPipeline:
         # Apply transforms if specified in config
         if transform_config and feature_group in transform_config:
             method = transform_config[feature_group]["method"]
+            self.logger.debug(f"Transform method for {feature_group}: {method}")
 
             if method == "standard_scaler":
                 transformer = Pipeline(
@@ -98,6 +114,9 @@ class PreprocessingPipeline:
             # No transforms, just impute
             transformer = imputer
 
+        self.logger.debug(
+            f"Pipeline created for {feature_group} with {len(cols)} columns"
+        )
         return (f"{feature_group}_pipeline", transformer, cols)
 
     def _create_imputation_transformers(self, preprocessing_config):
@@ -108,14 +127,25 @@ class PreprocessingPipeline:
             imputation_config = preprocessing_config["imputation"]
             transform_config = preprocessing_config.get("transforms", {})
 
+            self.logger.info(
+                f"Creating transformers for {len(self.feature_columns)} feature groups"
+            )
             # Loop through all user-defined feature groups and create pipelines
-            for feature_group in self.feature_columns.keys():
+            for feature_group in tqdm(
+                self.feature_columns.keys(),
+                desc="Creating feature pipelines",
+                unit="group",
+            ):
                 pipeline_info = self._create_feature_pipeline(
                     feature_group, imputation_config, transform_config
                 )
                 if pipeline_info:
                     transformers.append(pipeline_info)
+                    self.logger.debug(f"Added transformer for {feature_group}")
+                else:
+                    self.logger.debug(f"Skipped transformer for {feature_group}")
 
+        self.logger.info(f"Created {len(transformers)} transformers")
         return transformers
 
     def _create_feature_selection_step(self, preprocessing_config, base_transformer):
@@ -189,6 +219,7 @@ class PreprocessingPipeline:
         Returns:
             Pipeline, ColumnTransformer, or FunctionTransformer: The configured preprocessing pipeline.
         """
+        self.logger.info("Creating preprocessing pipeline...")
         preprocessing_config = self.config.get("preprocessing", {})
 
         # Create imputation and transform transformers
@@ -199,14 +230,20 @@ class PreprocessingPipeline:
             base_transformer = ColumnTransformer(
                 transformers=transformers, remainder="drop"
             )
+            self.logger.info("Created ColumnTransformer with transformers")
         else:
             base_transformer = FunctionTransformer(func=None)
+            self.logger.info("No transformers configured, using passthrough")
 
         # Add feature selection if specified
         final_pipeline = self._create_feature_selection_step(
             preprocessing_config, base_transformer
         )
 
+        if final_pipeline != base_transformer:
+            self.logger.info("Added feature selection step to pipeline")
+
+        self.logger.info("Preprocessing pipeline creation completed")
         return final_pipeline
 
 
@@ -244,8 +281,8 @@ if __name__ == "__main__":
         for name, step in pipeline.steps:
             print(f"  - {name}: {type(step).__name__}")
     elif isinstance(pipeline, ColumnTransformer):
-        print(f"Pipeline steps: {len(pipeline.transformers)}")
-        for name, transformer, columns in pipeline.transformers:
+        print(f"Pipeline transformers: {len(pipeline.transformers_)}")
+        for name, transformer, columns in pipeline.transformers_:
             print(f"  - {name}: {type(transformer).__name__} on {columns}")
     else:
         print("Pipeline: No-op transformer")

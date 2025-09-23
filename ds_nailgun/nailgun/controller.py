@@ -17,6 +17,7 @@ import pandas as pd
 from .dataloader import DataLoader
 from .preprocessing import create_preprocessing_pipeline
 from .model_factory import create_model
+from tqdm import tqdm
 
 
 class ExperimentController:
@@ -126,7 +127,9 @@ class ExperimentController:
         """Load all configuration files."""
         # Load data configs (now multiple)
         self.configs["data"] = []
-        for i, data_config_path in enumerate(self.config_paths["data"]):
+        for i, data_config_path in enumerate(
+            tqdm(self.config_paths["data"], desc="Loading data configs", unit="config")
+        ):
             with open(data_config_path, "r") as file:
                 config = yaml.safe_load(file)
                 self.configs["data"].append(
@@ -140,7 +143,9 @@ class ExperimentController:
 
         # Load model configs
         self.configs["models"] = []
-        for model_config_path in self.model_config_paths:
+        for model_config_path in tqdm(
+            self.model_config_paths, desc="Loading model configs", unit="config"
+        ):
             with open(model_config_path, "r") as file:
                 config = yaml.safe_load(file)
                 self.configs["models"].append(
@@ -153,7 +158,9 @@ class ExperimentController:
         if "data" not in self.configs or not self.configs["data"]:
             raise ValueError("Data configs not loaded. Call load_configs() first.")
 
-        for data_config_info in self.configs["data"]:
+        for data_config_info in tqdm(
+            self.configs["data"], desc="Setting up data", unit="config"
+        ):
             data_config_path = data_config_info["path"]
             data_config_name = data_config_info["name"]
 
@@ -174,7 +181,9 @@ class ExperimentController:
         if "data" not in self.configs or not self.configs["data"]:
             raise ValueError("Data configs not loaded. Call load_configs() first.")
 
-        for data_config_info in self.configs["data"]:
+        for data_config_info in tqdm(
+            self.configs["data"], desc="Setting up preprocessing", unit="pipeline"
+        ):
             data_config_path = data_config_info["path"]
             data_config_name = data_config_info["name"]
 
@@ -198,7 +207,9 @@ class ExperimentController:
             self.logger.info("No model configs provided.")
             return
 
-        for config_path in self.model_config_paths:
+        for config_path in tqdm(
+            self.model_config_paths, desc="Setting up models", unit="model"
+        ):
             model = create_model(config_path)
             self.models.append(model)
             self.logger.info(
@@ -222,97 +233,110 @@ class ExperimentController:
             )
 
         experiment_count = 0
+        total_experiments = len(self.configs["data"]) * len(self.models)
+        self.logger.info(f"Starting training of {total_experiments} experiments")
 
         # Train models for each combination of data config and model config
-        for data_config_info in self.configs["data"]:
-            data_config_name = data_config_info["name"]
-            data_config = data_config_info["config"]
-            train_data = self.data[data_config_name]["train"]
+        with tqdm(
+            total=total_experiments, desc="Training experiments", unit="experiment"
+        ) as pbar:
+            for data_config_info in self.configs["data"]:
+                data_config_name = data_config_info["name"]
+                data_config = data_config_info["config"]
+                train_data = self.data[data_config_name]["train"]
 
-            X_train = train_data.drop(columns=[data_config["data"]["target"]["column"]])
-            y_train = train_data[data_config["data"]["target"]["column"]]
-
-            for model_idx, (model, model_config_info) in enumerate(
-                zip(self.models, self.configs["models"])
-            ):
-                experiment_count += 1
-                experiment_name = f"{data_config_name}_model_{model_idx + 1}"
-
-                # Load the full model config to check for hypertuning
-                full_config = model_config_info["config"]
-
-                estimator = model
-                if (
-                    "hypertuning" in full_config
-                    and full_config["hypertuning"]["method"] == "grid_search"
-                ):
-                    hypertuning_config = full_config["hypertuning"]
-
-                    # Handle special scoring metrics
-                    scoring_config = hypertuning_config.get(
-                        "scoring", {"name": "accuracy"}
-                    )
-                    if isinstance(scoring_config, str):
-                        # Backward compatibility: if scoring is still a string
-                        scoring = scoring_config
-                    else:
-                        # New format: scoring is a dict with name and optional parameters
-                        scoring_name = scoring_config.get("name", "accuracy")
-                        if scoring_name == "pinball_loss":
-                            alpha = scoring_config.get(
-                                "alpha", 0.5
-                            )  # Default to median if not specified
-                            scoring = make_scorer(
-                                mean_pinball_loss, alpha=alpha, greater_is_better=False
-                            )
-                        else:
-                            scoring = scoring_name
-
-                    estimator = GridSearchCV(
-                        model,
-                        param_grid=hypertuning_config["parameters"],
-                        cv=hypertuning_config.get("cv", 5),
-                        scoring=scoring,
-                        verbose=1,
-                    )
-                    self.logger.info(
-                        f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Grid Search"
-                    )
-                else:
-                    self.logger.info(
-                        f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__}"
-                    )
-
-                # Create pipeline: preprocessing + estimator
-                pipeline = Pipeline(
-                    [
-                        (
-                            "preprocessing",
-                            self.preprocessing_pipeline[data_config_name],
-                        ),
-                        ("model", estimator),
-                    ]
+                X_train = train_data.drop(
+                    columns=[data_config["data"]["target"]["column"]]
                 )
+                y_train = train_data[data_config["data"]["target"]["column"]]
 
-                # Fit the pipeline
-                pipeline.fit(X_train, y_train)
+                for model_idx, (model, model_config_info) in enumerate(
+                    zip(self.models, self.configs["models"])
+                ):
+                    experiment_count += 1
+                    experiment_name = f"{data_config_name}_model_{model_idx + 1}"
 
-                # Store the trained pipeline
-                self.trained_pipelines[experiment_name] = {
-                    "pipeline": pipeline,
-                    "data_config": data_config_name,
-                    "model_config": model_config_info["path"],
-                    "model_name": type(model).__name__,
-                }
+                    # Load the full model config to check for hypertuning
+                    full_config = model_config_info["config"]
 
-                # Print best parameters if grid search was used
-                if isinstance(estimator, GridSearchCV):
-                    self.logger.info(f"  Best parameters: {estimator.best_params_}")
-                    self.logger.info(
-                        f"  Best cross-validation score: {estimator.best_score_:.4f}"
+                    estimator = model
+                    if (
+                        "hypertuning" in full_config
+                        and full_config["hypertuning"]["method"] == "grid_search"
+                    ):
+                        hypertuning_config = full_config["hypertuning"]
+
+                        # Handle special scoring metrics
+                        scoring_config = hypertuning_config.get(
+                            "scoring", {"name": "accuracy"}
+                        )
+                        if isinstance(scoring_config, str):
+                            # Backward compatibility: if scoring is still a string
+                            scoring = scoring_config
+                        else:
+                            # New format: scoring is a dict with name and optional parameters
+                            scoring_name = scoring_config.get("name", "accuracy")
+                            if scoring_name == "pinball_loss":
+                                alpha = scoring_config.get(
+                                    "alpha", 0.5
+                                )  # Default to median if not specified
+                                scoring = make_scorer(
+                                    mean_pinball_loss,
+                                    alpha=alpha,
+                                    greater_is_better=False,
+                                )
+                            else:
+                                scoring = scoring_name
+
+                        estimator = GridSearchCV(
+                            model,
+                            param_grid=hypertuning_config["parameters"],
+                            cv=hypertuning_config.get("cv", 5),
+                            scoring=scoring,
+                            verbose=2,  # Increased verbosity
+                        )
+                        self.logger.info(
+                            f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Grid Search"
+                        )
+                    else:
+                        self.logger.info(
+                            f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__}"
+                        )
+
+                    # Create pipeline: preprocessing + estimator
+                    pipeline = Pipeline(
+                        [
+                            (
+                                "preprocessing",
+                                self.preprocessing_pipeline[data_config_name],
+                            ),
+                            ("model", estimator),
+                        ]
                     )
 
-                self.logger.info(f"  Experiment {experiment_name} trained successfully")
+                    # Fit the pipeline
+                    self.logger.info(f"Fitting pipeline for {experiment_name}...")
+                    pipeline.fit(X_train, y_train)
+
+                    # Store the trained pipeline
+                    self.trained_pipelines[experiment_name] = {
+                        "pipeline": pipeline,
+                        "data_config": data_config_name,
+                        "model_config": model_config_info["path"],
+                        "model_name": type(model).__name__,
+                    }
+
+                    # Print best parameters if grid search was used
+                    if isinstance(estimator, GridSearchCV):
+                        self.logger.info(f"  Best parameters: {estimator.best_params_}")
+                        self.logger.info(
+                            f"  Best cross-validation score: {estimator.best_score_:.4f}"
+                        )
+
+                    self.logger.info(
+                        f"  Experiment {experiment_name} trained successfully"
+                    )
+                    pbar.update(1)
 
         self.logger.info(f"Completed training {experiment_count} model experiments")
         return self.trained_pipelines
@@ -324,7 +348,9 @@ class ExperimentController:
 
         save_format = self.output_config.get("save_format", "joblib")
 
-        for experiment_name, experiment_info in self.trained_pipelines.items():
+        for experiment_name, experiment_info in tqdm(
+            self.trained_pipelines.items(), desc="Saving models", unit="model"
+        ):
             pipeline = experiment_info["pipeline"]
             model_name = experiment_info["model_name"]
 
@@ -356,7 +382,11 @@ class ExperimentController:
         if not self.trained_pipelines or not self.output_dir:
             return
 
-        for experiment_name, experiment_info in self.trained_pipelines.items():
+        for experiment_name, experiment_info in tqdm(
+            self.trained_pipelines.items(),
+            desc="Saving hyperparameter results",
+            unit="result",
+        ):
             pipeline = experiment_info["pipeline"]
 
             # Check if this pipeline used GridSearchCV
@@ -459,7 +489,9 @@ class ExperimentController:
         )
 
         # Save data configs
-        for data_config_info in self.configs["data"]:
+        for data_config_info in tqdm(
+            self.configs["data"], desc="Saving data configs", unit="config"
+        ):
             config_name = data_config_info["name"]
             config_file = os.path.join(configs_dir, f"{config_name}.yaml")
             with open(config_file, "w") as f:
@@ -471,7 +503,9 @@ class ExperimentController:
             )
 
         # Save model configs
-        for model_config_info in self.configs["models"]:
+        for model_config_info in tqdm(
+            self.configs["models"], desc="Saving model configs", unit="config"
+        ):
             config_path = model_config_info["path"]
             config_name = os.path.basename(config_path)
             config_file = os.path.join(configs_dir, config_name)
@@ -485,29 +519,46 @@ class ExperimentController:
 
     def run_experiment(self):
         """Run the complete experiment pipeline."""
-        self.logger.info("Starting Data Science Experiment...")
+        self.logger.info("🚀 Starting Data Science Experiment...")
+        self.logger.info(
+            f"Experiment name: {self.experiment_config['experiment']['name']}"
+        )
+        self.logger.info(f"Number of data configs: {len(self.config_paths['data'])}")
+        self.logger.info(f"Number of model configs: {len(self.model_config_paths)}")
 
         # Step 1: Load configurations
+        self.logger.info("📂 Step 1: Loading configurations...")
         self.load_configs()
+        self.logger.info("✅ Configurations loaded successfully")
 
         # Step 2: Setup data
+        self.logger.info("📊 Step 2: Setting up data...")
         self.setup_data()
+        self.logger.info("✅ Data setup completed")
 
         # Step 3: Setup preprocessing
+        self.logger.info("🔧 Step 3: Setting up preprocessing pipelines...")
         self.setup_preprocessing()
+        self.logger.info("✅ Preprocessing pipelines ready")
 
         # Step 4: Setup models
+        self.logger.info("🤖 Step 4: Setting up models...")
         self.setup_models()
+        self.logger.info("✅ Models setup completed")
 
         # Step 5: Train models
+        self.logger.info("🏋️ Step 5: Training models...")
         self.train_models()
+        self.logger.info("✅ Model training completed")
 
         # Step 6: Save results
+        self.logger.info("💾 Step 6: Saving results...")
         self.save_models()
         self.save_hyperparameter_results()
         self.save_config_summary()
+        self.logger.info("✅ Results saved successfully")
 
-        self.logger.info("Experiment complete!")
+        self.logger.info("🎉 Experiment complete!")
         self.logger.info(f"All results saved to: {self.output_dir}")
         return self.experiment_state
 

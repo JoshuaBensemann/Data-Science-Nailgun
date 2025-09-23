@@ -14,6 +14,8 @@ import pandas as pd
 from pathlib import Path
 from sklearn.metrics import accuracy_score
 import sys
+import logging
+from tqdm import tqdm
 
 
 class PostExperimentAnalyzer:
@@ -27,6 +29,7 @@ class PostExperimentAnalyzer:
             experiment_dirs: List of paths to experiment directories
             force: Skip confirmation prompts
         """
+        self.logger = logging.getLogger(__name__)
         self.experiment_dirs = [Path(d) for d in experiment_dirs]
         self.force = force
         self.experiment_summaries = {}
@@ -50,10 +53,13 @@ class PostExperimentAnalyzer:
 
     def load_experiment_summary(self):
         """Load the experiment summary YAML files."""
-        for exp_dir in self.experiment_dirs:
+        for exp_dir in tqdm(
+            self.experiment_dirs, desc="Loading experiment summaries", unit="summary"
+        ):
             summary_path = exp_dir / "experiment_summary.yaml"
             with open(summary_path, "r") as f:
                 self.experiment_summaries[exp_dir.name] = yaml.safe_load(f)
+            self.logger.info(f"Loaded summary for {exp_dir.name}")
 
         total_experiments = sum(
             len(summary["experiments_run"])
@@ -65,7 +71,9 @@ class PostExperimentAnalyzer:
 
     def load_configs(self):
         """Load the original configuration files."""
-        for exp_dir in self.experiment_dirs:
+        for exp_dir in tqdm(
+            self.experiment_dirs, desc="Loading configs", unit="experiment"
+        ):
             exp_name = exp_dir.name
             self.configs[exp_name] = {}
             configs_dir = exp_dir / "configs"
@@ -107,7 +115,9 @@ class PostExperimentAnalyzer:
 
     def load_models(self):
         """Load all trained model pipelines."""
-        for exp_dir in self.experiment_dirs:
+        for exp_dir in tqdm(
+            self.experiment_dirs, desc="Loading models", unit="experiment"
+        ):
             exp_name = exp_dir.name
             self.models[exp_name] = {}
             models_dir = exp_dir / "models"
@@ -130,7 +140,9 @@ class PostExperimentAnalyzer:
         from .dataloader import DataLoader
 
         # Load data for each data config in each experiment
-        for exp_dir in self.experiment_dirs:
+        for exp_dir in tqdm(
+            self.experiment_dirs, desc="Loading data", unit="experiment"
+        ):
             exp_name = exp_dir.name
             self.data[exp_name] = {}
             for data_config_name, data_config in self.configs[exp_name]["data"].items():
