@@ -19,4 +19,5 @@ hypertuning:
     min_samples_split: [2, 5]
     min_samples_leaf: [1, 2]
   cv: 5
-  scoring: 'accuracy'
+  scoring:
+    name: 'accuracy'

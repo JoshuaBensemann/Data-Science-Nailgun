@@ -12,6 +12,7 @@ import os
 from datetime import datetime
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import make_scorer, mean_pinball_loss
 import pandas as pd
 from .dataloader import DataLoader
 from .preprocessing import create_preprocessing_pipeline
@@ -246,11 +247,32 @@ class ExperimentController:
                     and full_config["hypertuning"]["method"] == "grid_search"
                 ):
                     hypertuning_config = full_config["hypertuning"]
+
+                    # Handle special scoring metrics
+                    scoring_config = hypertuning_config.get(
+                        "scoring", {"name": "accuracy"}
+                    )
+                    if isinstance(scoring_config, str):
+                        # Backward compatibility: if scoring is still a string
+                        scoring = scoring_config
+                    else:
+                        # New format: scoring is a dict with name and optional parameters
+                        scoring_name = scoring_config.get("name", "accuracy")
+                        if scoring_name == "pinball_loss":
+                            alpha = scoring_config.get(
+                                "alpha", 0.5
+                            )  # Default to median if not specified
+                            scoring = make_scorer(
+                                mean_pinball_loss, alpha=alpha, greater_is_better=False
+                            )
+                        else:
+                            scoring = scoring_name
+
                     estimator = GridSearchCV(
                         model,
                         param_grid=hypertuning_config["parameters"],
                         cv=hypertuning_config.get("cv", 5),
-                        scoring=hypertuning_config.get("scoring", "accuracy"),
+                        scoring=scoring,
                         verbose=1,
                     )
                     self.logger.info(

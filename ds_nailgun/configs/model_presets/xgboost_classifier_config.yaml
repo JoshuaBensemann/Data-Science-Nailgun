@@ -21,4 +21,5 @@ hypertuning:
     subsample: [0.8, 1.0]
     colsample_bytree: [0.8, 1.0]
   cv: 5
-  scoring: 'accuracy'
+  scoring:
+    name: 'accuracy'

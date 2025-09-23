@@ -1,0 +1,20 @@
+# Quantile Regression Model Configuration (q=0.9)
+
+model:
+  type: QuantileRegressor
+  library: sklearn.linear_model
+  parameters:
+    quantile: 0.9
+    alpha: 0.01
+    solver: "highs"
+
+# Optional hyperparameter tuning configuration
+hypertuning:
+  method: "grid_search"  # Options: "grid_search", "random_search"
+  parameters:
+    alpha: [0.001, 0.01, 0.1]
+    solver: ["highs", "interior-point"]
+  cv: 5
+  scoring:
+    name: 'pinball_loss'
+    alpha: 0.9  # Quantile level for pinball loss scoring
