@@ -47,7 +47,7 @@ ESTIMATOR_NAMES = ["logistic_regression"]
 STRING_FEATURE_GROUPS = ["categorical", "string"]
 
 # Controller constants
-HYPERTUNING_METHODS = ["grid_search"]
+HYPERTUNING_METHODS = ["grid_search", "random_search"]
 SCORING_NAMES = ["pinball_loss"]
 SAVE_FORMATS = ["joblib", "pickle"]
 

@@ -11,7 +11,7 @@ import joblib
 import os
 from datetime import datetime
 from sklearn.pipeline import Pipeline
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from sklearn.metrics import make_scorer, mean_pinball_loss
 import pandas as pd
 from .dataloader import DataLoader
@@ -308,19 +308,36 @@ class ExperimentController:
                             else:
                                 scoring = scoring_name
 
-                        estimator = GridSearchCV(
-                            model,
-                            param_grid=hypertuning_config["parameters"],
-                            cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
-                            scoring=scoring,
-                            verbose=DEFAULT_GRID_SEARCH_VERBOSE,  # Increased verbosity
-                            n_jobs=hypertuning_config.get(
-                                "n_jobs", -1
-                            ),  # Use all available CPU cores
-                        )
-                        self.logger.info(
-                            f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Grid Search"
-                        )
+                        method = hypertuning_config["method"]
+                        if method == "grid_search":
+                            estimator = GridSearchCV(
+                                model,
+                                param_grid=hypertuning_config["parameters"],
+                                cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
+                                scoring=scoring,
+                                verbose=DEFAULT_GRID_SEARCH_VERBOSE,
+                                n_jobs=hypertuning_config.get("n_jobs", -1),
+                            )
+                            self.logger.info(
+                                f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Grid Search"
+                            )
+                        elif method == "random_search":
+                            n_iter = hypertuning_config.get(
+                                "n_iter", 10
+                            )  # Default 10 iterations
+                            estimator = RandomizedSearchCV(
+                                model,
+                                param_distributions=hypertuning_config["parameters"],
+                                n_iter=n_iter,
+                                cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
+                                scoring=scoring,
+                                verbose=DEFAULT_GRID_SEARCH_VERBOSE,
+                                n_jobs=hypertuning_config.get("n_jobs", -1),
+                                random_state=42,  # For reproducibility
+                            )
+                            self.logger.info(
+                                f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Random Search ({n_iter} iterations)"
+                            )
                     else:
                         self.logger.info(
                             f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__}"
@@ -349,8 +366,8 @@ class ExperimentController:
                         "model_name": type(model).__name__,
                     }
 
-                    # Print best parameters if grid search was used
-                    if isinstance(estimator, GridSearchCV):
+                    # Print best parameters if hypertuning was used
+                    if isinstance(estimator, (GridSearchCV, RandomizedSearchCV)):
                         self.logger.info(f"  Best parameters: {estimator.best_params_}")
                         self.logger.info(
                             f"  Best cross-validation score: {estimator.best_score_:.4f}"
@@ -377,7 +394,7 @@ class ExperimentController:
             pipeline = experiment_info["pipeline"]
             model_name = experiment_info["model_name"]
 
-            # Get the actual model name (handle GridSearchCV)
+            # Get the actual model name (handle hypertuning)
             if hasattr(pipeline.named_steps["model"], "best_estimator_"):
                 actual_model_name = type(
                     pipeline.named_steps["model"].best_estimator_
@@ -413,7 +430,7 @@ class ExperimentController:
         ):
             pipeline = experiment_info["pipeline"]
 
-            # Check if this pipeline used GridSearchCV
+            # Check if this pipeline used hypertuning
             if hasattr(pipeline.named_steps["model"], "cv_results_"):
                 cv_results = pipeline.named_steps["model"].cv_results_
 

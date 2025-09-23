@@ -4,26 +4,30 @@ model:
   type: XGBClassifier
   library: xgboost
   parameters:
-    n_estimators: 100
+    n_estimators: 1000  # Increased for early stopping
     max_depth: 6
     learning_rate: 0.1
     subsample: 0.8
     colsample_bytree: 0.8
     random_state: 1986
-    verbosity: 2  # Increased verbosity: 0=silent, 1=warning, 2=info, 3=debug
+    verbosity: 1  # Reduced verbosity: 0=silent, 1=warning, 2=info, 3=debug
     n_jobs: -1  # Use all available CPU cores
+    early_stopping_rounds: 50  # Enable early stopping
+    eval_metric: 'logloss'  # Required for early stopping
 
 # Optional hyperparameter tuning configuration
 hypertuning:
-  method: "grid_search"  # Options: "grid_search", "random_search"
+  method: "random_search"  # Options: "grid_search", "random_search"
+  n_iter: 20  # Number of parameter combinations to try (much faster than grid search)
   parameters:
-    n_estimators: [50, 100]
-    max_depth: [3, 6]
-    learning_rate: [0.1, 0.2]
-    subsample: [0.8, 1.0]
-    colsample_bytree: [0.8, 1.0]
-    verbosity: [2]  # Keep verbosity at info level during tuning
-  cv: 5
+    n_estimators: [100, 200, 500, 1000]
+    max_depth: [3, 4, 5, 6, 8, 10]
+    learning_rate: [0.01, 0.05, 0.1, 0.2, 0.3]
+    subsample: [0.6, 0.7, 0.8, 0.9, 1.0]
+    colsample_bytree: [0.6, 0.7, 0.8, 0.9, 1.0]
+    early_stopping_rounds: [10, 20, 50, 100]  # Early stopping patience
+    verbosity: [0]  # Reduced verbosity for speed
+  cv: 3  # Reduced from 5 to 3 for speed
   scoring:
     name: 'accuracy'
-  n_jobs: -1  # Use all available CPU cores for parallel grid search
+  n_jobs: 1  # Use single core to avoid joblib resource leaks
