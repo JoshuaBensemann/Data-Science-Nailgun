@@ -294,181 +294,198 @@ class ExperimentController:
                     experiment_count += 1
                     experiment_name = f"{data_config_name}_model_{model_idx + 1}"
 
-                    # Load the full model config to check for hypertuning
-                    full_config = model_config_info["config"]
+                    try:
+                        # Load the full model config to check for hypertuning
+                        full_config = model_config_info["config"]
 
-                    estimator = model
-                    if (
-                        "hypertuning" in full_config
-                        and full_config["hypertuning"]["method"] in HYPERTUNING_METHODS
-                    ):
-                        hypertuning_config = full_config["hypertuning"]
+                        estimator = model
+                        if (
+                            "hypertuning" in full_config
+                            and full_config["hypertuning"]["method"]
+                            in HYPERTUNING_METHODS
+                        ):
+                            hypertuning_config = full_config["hypertuning"]
 
-                        # Handle special scoring metrics
-                        scoring_config = hypertuning_config.get(
-                            "scoring", {"name": DEFAULT_SCORING_NAME}
-                        )
-                        if isinstance(scoring_config, str):
-                            # Backward compatibility: if scoring is still a string
-                            scoring = scoring_config
-                        else:
-                            # New format: scoring is a dict with name and optional parameters
-                            scoring_name = scoring_config.get(
-                                "name", DEFAULT_SCORING_NAME
+                            # Handle special scoring metrics
+                            scoring_config = hypertuning_config.get(
+                                "scoring", {"name": DEFAULT_SCORING_NAME}
                             )
-                            if scoring_name in SCORING_NAMES:
-                                alpha = scoring_config.get(
-                                    "alpha", DEFAULT_PINBALL_ALPHA
-                                )  # Default to median if not specified
-                                scoring = make_scorer(
-                                    mean_pinball_loss,
-                                    alpha=alpha,
-                                    greater_is_better=False,
-                                )
+                            if isinstance(scoring_config, str):
+                                # Backward compatibility: if scoring is still a string
+                                scoring = scoring_config
                             else:
-                                scoring = scoring_name
+                                # New format: scoring is a dict with name and optional parameters
+                                scoring_name = scoring_config.get(
+                                    "name", DEFAULT_SCORING_NAME
+                                )
+                                if scoring_name in SCORING_NAMES:
+                                    alpha = scoring_config.get(
+                                        "alpha", DEFAULT_PINBALL_ALPHA
+                                    )  # Default to median if not specified
+                                    scoring = make_scorer(
+                                        mean_pinball_loss,
+                                        alpha=alpha,
+                                        greater_is_better=False,
+                                    )
+                                else:
+                                    scoring = scoring_name
 
-                        method = hypertuning_config["method"]
-                        if method == "grid_search":
-                            estimator = GridSearchCV(
-                                model,
-                                param_grid=hypertuning_config["parameters"],
-                                cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
-                                scoring=scoring,
-                                verbose=DEFAULT_GRID_SEARCH_VERBOSE,
-                                n_jobs=hypertuning_config.get("n_jobs", -1),
-                            )
+                            method = hypertuning_config["method"]
+                            if method == "grid_search":
+                                estimator = GridSearchCV(
+                                    model,
+                                    param_grid=hypertuning_config["parameters"],
+                                    cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
+                                    scoring=scoring,
+                                    verbose=DEFAULT_GRID_SEARCH_VERBOSE,
+                                    n_jobs=hypertuning_config.get("n_jobs", -1),
+                                )
+                                self.logger.info(
+                                    f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Grid Search"
+                                )
+                            elif method == "random_search":
+                                n_iter = hypertuning_config.get(
+                                    "n_iter", 10
+                                )  # Default 10 iterations
+                                estimator = RandomizedSearchCV(
+                                    model,
+                                    param_distributions=hypertuning_config[
+                                        "parameters"
+                                    ],
+                                    n_iter=n_iter,
+                                    cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
+                                    scoring=scoring,
+                                    verbose=DEFAULT_GRID_SEARCH_VERBOSE,
+                                    n_jobs=hypertuning_config.get("n_jobs", -1),
+                                    random_state=42,  # For reproducibility
+                                )
+                                self.logger.info(
+                                    f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Random Search ({n_iter} iterations)"
+                                )
+                            elif method == "halving_grid_search":
+                                estimator = HalvingGridSearchCV(
+                                    model,
+                                    param_grid=hypertuning_config["parameters"],
+                                    cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
+                                    scoring=scoring,
+                                    verbose=DEFAULT_GRID_SEARCH_VERBOSE,
+                                    n_jobs=hypertuning_config.get(
+                                        "n_jobs", DEFAULT_HALVING_N_JOBS
+                                    ),  # Halving doesn't support parallel well
+                                    random_state=42,  # For reproducibility
+                                    factor=hypertuning_config.get(
+                                        "factor", DEFAULT_HALVING_FACTOR
+                                    ),  # Default halving factor
+                                    resource=hypertuning_config.get(
+                                        "resource", DEFAULT_HALVING_RESOURCE
+                                    ),  # Resource to allocate
+                                    max_resources=hypertuning_config.get(
+                                        "max_resources", DEFAULT_HALVING_MAX_RESOURCES
+                                    ),  # Max resources parameter
+                                    min_resources=hypertuning_config.get(
+                                        "min_resources", DEFAULT_HALVING_MIN_RESOURCES
+                                    ),  # Min resources parameter
+                                )
+                                self.logger.info(
+                                    f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Halving Grid Search"
+                                )
+                            elif method == "halving_random_search":
+                                n_candidates = hypertuning_config.get(
+                                    "n_candidates", DEFAULT_HALVING_N_CANDIDATES
+                                )  # Default number of candidates
+                                estimator = HalvingRandomSearchCV(
+                                    model,
+                                    param_distributions=hypertuning_config[
+                                        "parameters"
+                                    ],
+                                    n_candidates=n_candidates,
+                                    cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
+                                    scoring=scoring,
+                                    verbose=DEFAULT_GRID_SEARCH_VERBOSE,
+                                    n_jobs=hypertuning_config.get(
+                                        "n_jobs", DEFAULT_HALVING_N_JOBS
+                                    ),  # Halving doesn't support parallel well
+                                    random_state=42,  # For reproducibility
+                                    factor=hypertuning_config.get(
+                                        "factor", DEFAULT_HALVING_FACTOR
+                                    ),  # Default halving factor
+                                    resource=hypertuning_config.get(
+                                        "resource", DEFAULT_HALVING_RESOURCE
+                                    ),  # Resource to allocate
+                                    max_resources=hypertuning_config.get(
+                                        "max_resources", DEFAULT_HALVING_MAX_RESOURCES
+                                    ),  # Max resources parameter
+                                    min_resources=hypertuning_config.get(
+                                        "min_resources", DEFAULT_HALVING_MIN_RESOURCES
+                                    ),  # Min resources parameter
+                                )
+                                self.logger.info(
+                                    f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Halving Random Search ({n_candidates} candidates)"
+                                )
                             self.logger.info(
-                                f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Grid Search"
+                                f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__}"
                             )
-                        elif method == "random_search":
-                            n_iter = hypertuning_config.get(
-                                "n_iter", 10
-                            )  # Default 10 iterations
-                            estimator = RandomizedSearchCV(
-                                model,
-                                param_distributions=hypertuning_config["parameters"],
-                                n_iter=n_iter,
-                                cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
-                                scoring=scoring,
-                                verbose=DEFAULT_GRID_SEARCH_VERBOSE,
-                                n_jobs=hypertuning_config.get("n_jobs", -1),
-                                random_state=42,  # For reproducibility
-                            )
-                            self.logger.info(
-                                f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Random Search ({n_iter} iterations)"
-                            )
-                        elif method == "halving_grid_search":
-                            estimator = HalvingGridSearchCV(
-                                model,
-                                param_grid=hypertuning_config["parameters"],
-                                cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
-                                scoring=scoring,
-                                verbose=DEFAULT_GRID_SEARCH_VERBOSE,
-                                n_jobs=hypertuning_config.get(
-                                    "n_jobs", DEFAULT_HALVING_N_JOBS
-                                ),  # Halving doesn't support parallel well
-                                random_state=42,  # For reproducibility
-                                factor=hypertuning_config.get(
-                                    "factor", DEFAULT_HALVING_FACTOR
-                                ),  # Default halving factor
-                                resource=hypertuning_config.get(
-                                    "resource", DEFAULT_HALVING_RESOURCE
-                                ),  # Resource to allocate
-                                max_resources=hypertuning_config.get(
-                                    "max_resources", DEFAULT_HALVING_MAX_RESOURCES
-                                ),  # Max resources parameter
-                                min_resources=hypertuning_config.get(
-                                    "min_resources", DEFAULT_HALVING_MIN_RESOURCES
-                                ),  # Min resources parameter
-                            )
-                            self.logger.info(
-                                f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Halving Grid Search"
-                            )
-                        elif method == "halving_random_search":
-                            n_candidates = hypertuning_config.get(
-                                "n_candidates", DEFAULT_HALVING_N_CANDIDATES
-                            )  # Default number of candidates
-                            estimator = HalvingRandomSearchCV(
-                                model,
-                                param_distributions=hypertuning_config["parameters"],
-                                n_candidates=n_candidates,
-                                cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
-                                scoring=scoring,
-                                verbose=DEFAULT_GRID_SEARCH_VERBOSE,
-                                n_jobs=hypertuning_config.get(
-                                    "n_jobs", DEFAULT_HALVING_N_JOBS
-                                ),  # Halving doesn't support parallel well
-                                random_state=42,  # For reproducibility
-                                factor=hypertuning_config.get(
-                                    "factor", DEFAULT_HALVING_FACTOR
-                                ),  # Default halving factor
-                                resource=hypertuning_config.get(
-                                    "resource", DEFAULT_HALVING_RESOURCE
-                                ),  # Resource to allocate
-                                max_resources=hypertuning_config.get(
-                                    "max_resources", DEFAULT_HALVING_MAX_RESOURCES
-                                ),  # Max resources parameter
-                                min_resources=hypertuning_config.get(
-                                    "min_resources", DEFAULT_HALVING_MIN_RESOURCES
-                                ),  # Min resources parameter
-                            )
-                            self.logger.info(
-                                f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Halving Random Search ({n_candidates} candidates)"
-                            )
-                        self.logger.info(
-                            f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__}"
+
+                        # Create pipeline: preprocessing + estimator
+                        pipeline = Pipeline(
+                            [
+                                (
+                                    "preprocessing",
+                                    self.preprocessing_pipeline[data_config_name],
+                                ),
+                                ("model", estimator),
+                            ]
                         )
 
-                    # Create pipeline: preprocessing + estimator
-                    pipeline = Pipeline(
-                        [
+                        # Fit the pipeline
+                        self.logger.info(f"Fitting pipeline for {experiment_name}...")
+                        pipeline.fit(X_train, y_train)
+
+                        # Store the trained pipeline
+                        self.trained_pipelines[experiment_name] = {
+                            "pipeline": pipeline,
+                            "data_config": data_config_name,
+                            "model_config": model_config_info["path"],
+                            "model_name": type(model).__name__,
+                        }
+
+                        # Print best parameters if hypertuning was used
+                        if isinstance(
+                            estimator,
                             (
-                                "preprocessing",
-                                self.preprocessing_pipeline[data_config_name],
+                                GridSearchCV,
+                                RandomizedSearchCV,
+                                HalvingGridSearchCV,
+                                HalvingRandomSearchCV,
                             ),
-                            ("model", estimator),
-                        ]
-                    )
+                        ):
+                            self.logger.info(
+                                f"  Best parameters: {estimator.best_params_}"
+                            )
+                            self.logger.info(
+                                f"  Best cross-validation score: {estimator.best_score_:.4f}"
+                            )
 
-                    # Fit the pipeline
-                    self.logger.info(f"Fitting pipeline for {experiment_name}...")
-                    pipeline.fit(X_train, y_train)
-
-                    # Store the trained pipeline
-                    self.trained_pipelines[experiment_name] = {
-                        "pipeline": pipeline,
-                        "data_config": data_config_name,
-                        "model_config": model_config_info["path"],
-                        "model_name": type(model).__name__,
-                    }
-
-                    # Print best parameters if hypertuning was used
-                    if isinstance(
-                        estimator,
-                        (
-                            GridSearchCV,
-                            RandomizedSearchCV,
-                            HalvingGridSearchCV,
-                            HalvingRandomSearchCV,
-                        ),
-                    ):
-                        self.logger.info(f"  Best parameters: {estimator.best_params_}")
                         self.logger.info(
-                            f"  Best cross-validation score: {estimator.best_score_:.4f}"
+                            f"  Experiment {experiment_name} trained successfully"
                         )
 
-                    self.logger.info(
-                        f"  Experiment {experiment_name} trained successfully"
-                    )
+                        # Save this model immediately after training
+                        if self.output_dir:
+                            self.save_single_model(experiment_name)
+                            self.save_single_hyperparameter_results(experiment_name)
+                            self.update_experiment_summary(experiment_name)
 
-                    # Save this model immediately after training
-                    if self.output_dir:
-                        self.save_single_model(experiment_name)
-                        self.save_single_hyperparameter_results(experiment_name)
-                        self.update_experiment_summary(experiment_name)
+                    except Exception as e:
+                        self.logger.error(
+                            f"❌ Failed to train experiment {experiment_name}: {str(e)}"
+                        )
+                        self.logger.error(f"   Error type: {type(e).__name__}")
+                        # Continue to next model instead of stopping the entire training process
 
-                    pbar.update(1)
+                    finally:
+                        # Always update progress bar, even on failure
+                        pbar.update(1)
 
         self.logger.info(f"Completed training {experiment_count} model experiments")
         return self.trained_pipelines

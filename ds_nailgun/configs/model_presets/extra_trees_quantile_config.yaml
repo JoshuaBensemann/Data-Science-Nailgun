@@ -1,0 +1,33 @@
+# ExtraTrees Quantile Regression Model Configuration (q=0.9)
+
+model:
+  type: ExtraTreesQuantileRegressor
+  library: quantile_forest
+  parameters:
+    n_estimators: 100
+    max_depth: null
+    min_samples_split: 2
+    min_samples_leaf: 1
+    random_state: 1986
+    n_jobs: -1  # Use all available CPU cores
+    # Quantile-specific parameters
+    default_quantiles: [0.9]  # Multiple quantiles can be predicted simultaneously
+
+# Optional hyperparameter tuning configuration
+hypertuning:
+  method: "halving_random_search"  # Successive halving with random search for efficient large-scale optimization
+  n_candidates: 90  # Number of candidate parameter combinations to evaluate initially
+  parameters:
+    max_depth: [None, 5, 10, 15, 20, 25, 30, 40]
+    min_samples_split: [2, 3, 5, 7, 10, 15]
+    min_samples_leaf: [1, 2, 3, 4, 5, 8, 10]
+    max_features: ['sqrt', 'log2', None, 0.3, 0.5, 0.7, 0.9]  # Feature selection
+  cv: 3  # Cross-validation folds
+  scoring:
+    name: 'pinball_loss'
+    alpha: 0.9  # Quantile level for pinball loss scoring
+  n_jobs: 1  # Halving search doesn't parallelize well
+  factor: 3  # Halving factor - eliminate 2/3 of candidates each round
+  resource: 'n_estimators'  # Resource parameter to optimize (number of trees)
+  max_resources: 1000  # Maximum resources (n_estimators) to use
+  min_resources: 10  # Minimum resources to start with

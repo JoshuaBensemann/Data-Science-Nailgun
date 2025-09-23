@@ -7,16 +7,3 @@ model:
     quantile: 0.9
     alpha: 0.01
     solver: "highs"
-
-# Optional hyperparameter tuning configuration
-hypertuning:
-  method: "random_search"  # Options: "grid_search", "random_search"
-  n_iter: 8  # Number of parameter combinations to try (fewer for linear model)
-  parameters:
-    alpha: [0.0001, 0.001, 0.01, 0.1, 1.0, 10.0]  # Wider range for regularization
-    solver: ["highs", "interior-point", "revised simplex"]  # More solver options
-  cv: 3  # Reduced from 5 to 3 for speed
-  scoring:
-    name: 'pinball_loss'
-    alpha: 0.9  # Quantile level for pinball loss scoring
-  n_jobs: 1  # Use single core to avoid joblib resource leaks
