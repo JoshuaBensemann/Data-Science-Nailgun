@@ -54,6 +54,11 @@ data:
 
 # Preprocessing configuration - defines data preprocessing pipeline
 preprocessing:
+  # Pipeline caching configuration (optional) - improves performance by caching intermediate results
+  cache:
+    enabled: true  # Set to true to enable caching, false to disable
+    directory: ".cache"  # Directory where cache files will be stored
+  
   # Imputation strategies for handling missing values
   # Configure imputation for each of your custom feature groups
   imputation:

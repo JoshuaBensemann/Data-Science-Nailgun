@@ -11,7 +11,7 @@ model:
 # Optional hyperparameter tuning configuration
 hypertuning:
   method: "random_search"  # Options: "grid_search", "random_search"
-  n_iter: 12  # Number of parameter combinations to try (fewer for linear model)
+  n_iter: 8  # Number of parameter combinations to try (fewer for linear model)
   parameters:
     alpha: [0.0001, 0.001, 0.01, 0.1, 1.0, 10.0]  # Wider range for regularization
     solver: ["highs", "interior-point", "revised simplex"]  # More solver options

@@ -27,6 +27,9 @@ data:
       - "Embarked"
 
 preprocessing:
+  cache:
+    enabled: true
+    directory: ".cache"
   imputation:
     passenger_info:
       method: "median"

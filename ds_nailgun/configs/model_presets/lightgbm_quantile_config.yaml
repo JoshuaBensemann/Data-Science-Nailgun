@@ -20,7 +20,7 @@ model:
 # Optional hyperparameter tuning configuration
 hypertuning:
   method: "halving_random_search"  # Successive halving with random search for efficient large-scale optimization
-  n_candidates: 100  # Number of candidate parameter combinations to evaluate initially
+  n_candidates: 30  # Number of candidate parameter combinations to evaluate initially
   n_iter: 20  # Number of parameter combinations to try
   parameters:
     max_depth: [3, 4, 5, 6, 8, 10, -1]  # -1 means no limit

@@ -5,7 +5,8 @@ An advanced package for streamlined data science experimentation with support fo
 ## Features
 
 - **Multiple Data Configurations**: Support for different feature sets and preprocessing strategies
-- **Hyperparameter Tuning**: Automated GridSearchCV for optimal model parameters
+- **Advanced Hyperparameter Tuning**: Halving search methods (HalvingGridSearchCV, HalvingRandomSearchCV) for efficient large-scale optimization
+- **Preprocessing Pipeline Caching**: Joblib-based caching to avoid redundant computations and improve performance
 - **Experiment Organization**: Timestamped experiment directories with comprehensive result storage
 - **Post-Experiment Analysis**: Tools for model evaluation and prediction generation across multiple experiments
 - **Multi-Experiment Comparison**: Compare and select best models across different experiment runs
@@ -51,6 +52,7 @@ data-science-nailgun/
 │   │   └── templates/       # Configuration templates
 │   └── nailgun/             # Core modules
 ├── experiments/             # Experiment outputs (auto-generated)
+├── .cache/                  # Preprocessing cache files (auto-generated)
 ├── scripts/                 # Utility scripts
 │   └── post_experiment_demo.py
 └── pyproject.toml           # Package configuration
@@ -80,7 +82,7 @@ data/titanic/
 
 ### 2. Run the Example Experiment
 
-The package includes a complete example experiment that trains Random Forest and XGBoost models on the Titanic dataset with different feature configurations.
+The package includes a complete example experiment that trains Random Forest and XGBoost models on the Titanic dataset with different feature configurations. The example uses advanced hyperparameter tuning with halving search and preprocessing pipeline caching for optimal performance.
 
 ```bash
 # Run the example experiment
@@ -94,7 +96,8 @@ print(f'Experiment completed! Results saved to: {controller.output_dir}')
 
 This will:
 - Load 2 different data configurations (different feature sets)
-- Train 2 model types (Random Forest + XGBoost) with hyperparameter tuning
+- Train 2 model types (Random Forest + XGBoost) with efficient halving random search hyperparameter tuning
+- Use preprocessing pipeline caching to avoid redundant computations
 - Create a timestamped experiment directory with all results
 - Save trained models, hyperparameter results (CSV), and experiment summary
 
@@ -161,6 +164,29 @@ data:
     passenger_info: ["Pclass", "SibSp", "Parch"]
     continuous_features: ["Age", "Fare"]
     categorical_features: ["Sex", "Embarked"]
+
+preprocessing:
+  cache:
+    enabled: true
+    directory: ".cache"
+  imputation:
+    passenger_info:
+      method: "median"
+    continuous_features:
+      method: "mean"
+    categorical_features:
+      method: "constant"
+      fill_value: "missing"
+  transforms:
+    continuous_features:
+      method: "standard_scaler"
+    categorical_features:
+      method: "one_hot_encoding"
+  feature_selection:
+    method: "select_k_best"
+    params:
+      k: 5
+      score_func: "f_classif"
 ```
 
 ### Experiment Configuration
@@ -219,6 +245,40 @@ The demo script automatically:
 
 ## Advanced Usage
 
+### Hyperparameter Tuning with Halving Search
+
+The system supports efficient halving search methods that progressively eliminate poorly performing parameter combinations:
+
+```yaml
+hypertuning:
+  method: "halving_random_search"  # Efficient successive halving
+  n_candidates: 80  # Start with many candidates
+  parameters:
+    n_estimators: [50, 100, 200, 300, 500]
+    max_depth: [null, 5, 10, 15, 20, 25, 30, 40]
+    # ... more parameters
+  cv: 3
+  scoring:
+    name: "accuracy"
+  n_jobs: 1  # Halving search works best serially
+  factor: 3  # Eliminate 2/3 of candidates each round
+  resource: 'n_estimators'  # Optimize this parameter
+  max_resources: 1000  # Maximum value for resource parameter
+  min_resources: 25  # Minimum value to start with
+```
+
+### Preprocessing Pipeline Caching
+
+Enable caching to avoid redundant preprocessing computations:
+
+```yaml
+preprocessing:
+  cache:
+    enabled: true
+    directory: ".cache"
+  # ... rest of preprocessing config
+```
+
 ### Custom Data Configurations
 
 Create multiple data configurations to test different feature engineering approaches:
@@ -240,10 +300,18 @@ model:
     max_depth: 10
 
 hypertuning:
-  - param: "n_estimators"
-    values: [50, 100, 200]
-  - param: "max_depth"
-    values: [5, 10, 15, null]
+  method: "halving_random_search"
+  n_candidates: 50
+  parameters:
+    n_estimators: [50, 100, 200]
+    max_depth: [5, 10, 15, null]
+  cv: 3
+  scoring:
+    name: "accuracy"
+  factor: 3
+  resource: 'n_estimators'
+  max_resources: 500
+  min_resources: 25
 ```
 
 ## Contributing

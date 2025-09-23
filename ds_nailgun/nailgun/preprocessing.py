@@ -5,6 +5,7 @@ Creates scikit-learn preprocessing pipelines based on YAML configuration.
 """
 
 import yaml
+import os
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import (
     StandardScaler,
@@ -23,6 +24,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LogisticRegression
 import logging
 from tqdm import tqdm
+import joblib
 from .consts import (
     SCORE_FUNCS,
     DEFAULT_K_BEST,
@@ -64,8 +66,24 @@ class PreprocessingPipeline:
             )
         return features
 
+    def _get_cache_config(self, preprocessing_config):
+        """Get cache configuration from preprocessing config."""
+        cache_config = preprocessing_config.get("cache", {})
+
+        if not cache_config.get("enabled", False):
+            return None
+
+        cache_dir = cache_config.get("directory", ".cache")
+        # Create cache directory if it doesn't exist
+        os.makedirs(cache_dir, exist_ok=True)
+
+        # Create joblib Memory object
+        memory = joblib.Memory(location=cache_dir, verbose=0)
+        self.logger.info(f"Pipeline caching enabled with directory: {cache_dir}")
+        return memory
+
     def _create_feature_pipeline(
-        self, feature_group, imputation_config, transform_config
+        self, feature_group, imputation_config, transform_config, memory=None
     ):
         """Create a preprocessing pipeline for a specific user-defined feature group."""
         self.logger.debug(f"Creating pipeline for feature group: {feature_group}")
@@ -102,22 +120,23 @@ class PreprocessingPipeline:
 
             if method == "standard_scaler":
                 transformer = Pipeline(
-                    [("imputer", imputer), ("scaler", StandardScaler())]
+                    [("imputer", imputer), ("scaler", StandardScaler())], memory=memory
                 )
             elif method == "min_max_scaler":
                 transformer = Pipeline(
-                    [("imputer", imputer), ("scaler", MinMaxScaler())]
+                    [("imputer", imputer), ("scaler", MinMaxScaler())], memory=memory
                 )
             elif method == "robust_scaler":
                 transformer = Pipeline(
-                    [("imputer", imputer), ("scaler", RobustScaler())]
+                    [("imputer", imputer), ("scaler", RobustScaler())], memory=memory
                 )
             elif method == "one_hot_encoding":
                 transformer = Pipeline(
                     [
                         ("imputer", imputer),
                         ("encoder", OneHotEncoder(sparse_output=False, drop="first")),
-                    ]
+                    ],
+                    memory=memory,
                 )
             else:
                 # Unknown method, just impute
@@ -131,7 +150,7 @@ class PreprocessingPipeline:
         )
         return (f"{feature_group}_pipeline", transformer, cols)
 
-    def _create_imputation_transformers(self, preprocessing_config):
+    def _create_imputation_transformers(self, preprocessing_config, memory=None):
         """Create transformers list for imputation and transforms."""
         transformers = []
 
@@ -149,7 +168,7 @@ class PreprocessingPipeline:
                 unit="group",
             ):
                 pipeline_info = self._create_feature_pipeline(
-                    feature_group, imputation_config, transform_config
+                    feature_group, imputation_config, transform_config, memory
                 )
                 if pipeline_info:
                     transformers.append(pipeline_info)
@@ -160,7 +179,9 @@ class PreprocessingPipeline:
         self.logger.info(f"Created {len(transformers)} transformers")
         return transformers
 
-    def _create_feature_selection_step(self, preprocessing_config, base_transformer):
+    def _create_feature_selection_step(
+        self, preprocessing_config, base_transformer, memory=None
+    ):
         """Create feature selection step if specified."""
         if "feature_selection" not in preprocessing_config:
             return base_transformer
@@ -223,7 +244,7 @@ class PreprocessingPipeline:
             pipeline_steps.append(("feature_selection", selector))
 
         # Create the full pipeline
-        return Pipeline(steps=pipeline_steps)
+        return Pipeline(steps=pipeline_steps, memory=memory)
 
     def create_pipeline(self):
         """
@@ -235,8 +256,13 @@ class PreprocessingPipeline:
         self.logger.info("Creating preprocessing pipeline...")
         preprocessing_config = self.config.get("preprocessing", {})
 
+        # Get cache configuration
+        memory = self._get_cache_config(preprocessing_config)
+
         # Create imputation and transform transformers
-        transformers = self._create_imputation_transformers(preprocessing_config)
+        transformers = self._create_imputation_transformers(
+            preprocessing_config, memory
+        )
 
         # Create base transformer (ColumnTransformer or passthrough)
         if transformers:
@@ -250,7 +276,7 @@ class PreprocessingPipeline:
 
         # Add feature selection if specified
         final_pipeline = self._create_feature_selection_step(
-            preprocessing_config, base_transformer
+            preprocessing_config, base_transformer, memory
         )
 
         if final_pipeline != base_transformer:
