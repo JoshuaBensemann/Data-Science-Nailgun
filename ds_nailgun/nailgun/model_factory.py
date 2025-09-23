@@ -1,6 +1,12 @@
 import yaml
 import importlib
 import logging
+import warnings
+
+# Suppress sklearn feature name warnings for LightGBM models
+warnings.filterwarnings(
+    "ignore", message=".*X does not have valid feature names.*", category=UserWarning
+)
 
 
 def create_model(config_path):
@@ -24,10 +30,17 @@ def create_model(config_path):
     model_type = model_config["type"]
     parameters = model_config["parameters"]
 
-    logger.debug(f"Model library: {library}, type: {model_type}")
-    logger.debug(f"Model parameters: {parameters}")
+    # Handle LightGBM parameter conflicts
+    if library == "lightgbm" and "feature_fraction" in parameters:
+        # Remove colsample_bytree if feature_fraction is present, as they are aliases
+        parameters.pop("colsample_bytree", None)
+        # Explicitly set colsample_bytree to None to override the default
+        parameters["colsample_bytree"] = None
+        logger.debug(
+            "Removed colsample_bytree parameter due to feature_fraction presence"
+        )
 
-    # Import the library module
+    logger.debug(f"Model parameters: {parameters}")
     module = importlib.import_module(library)
     logger.debug(f"Imported module: {module}")
 
