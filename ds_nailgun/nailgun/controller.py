@@ -17,7 +17,26 @@ import pandas as pd
 from .dataloader import DataLoader
 from .preprocessing import create_preprocessing_pipeline
 from .model_factory import create_model
-from .consts import HYPERTUNING_METHODS, SCORING_NAMES, SAVE_FORMATS
+from .consts import (
+    HYPERTUNING_METHODS,
+    SCORING_NAMES,
+    SAVE_FORMATS,
+    DEFAULT_BASE_DIR,
+    MODELS_DIR,
+    RESULTS_DIR,
+    LOGS_DIR,
+    CONFIGS_DIR,
+    EXPERIMENT_CONFIG_FILE,
+    EXPERIMENT_SUMMARY_FILE,
+    DEFAULT_CV_FOLDS,
+    DEFAULT_GRID_SEARCH_VERBOSE,
+    DEFAULT_PINBALL_ALPHA,
+    DEFAULT_SCORING_NAME,
+    DEFAULT_MODEL_TYPE,
+    DEFAULT_LOG_LEVEL,
+    DEFAULT_LOG_FORMAT,
+    TIMESTAMP_FORMAT,
+)
 from tqdm import tqdm
 
 
@@ -66,20 +85,20 @@ class ExperimentController:
             return
 
         # Create base directory if it doesn't exist
-        base_dir = self.output_config.get("base_directory", "experiments")
+        base_dir = self.output_config.get("base_directory", DEFAULT_BASE_DIR)
         os.makedirs(base_dir, exist_ok=True)
 
         # Create timestamped experiment directory
         experiment_name = (
             self.experiment_config["experiment"]["name"].replace(" ", "_").lower()
         )
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().strftime(TIMESTAMP_FORMAT)
         self.output_dir = os.path.join(base_dir, f"{experiment_name}_{timestamp}")
 
         # Create subdirectories
-        self.models_dir = os.path.join(self.output_dir, "models")
-        self.results_dir = os.path.join(self.output_dir, "results")
-        self.logs_dir = os.path.join(self.output_dir, "logs")
+        self.models_dir = os.path.join(self.output_dir, MODELS_DIR)
+        self.results_dir = os.path.join(self.output_dir, RESULTS_DIR)
+        self.logs_dir = os.path.join(self.output_dir, LOGS_DIR)
 
         os.makedirs(self.models_dir, exist_ok=True)
         os.makedirs(self.results_dir, exist_ok=True)
@@ -90,10 +109,8 @@ class ExperimentController:
     def setup_logging(self):
         """Setup logging based on experiment configuration."""
         logging_config = self.experiment_config.get("logging", {})
-        level = getattr(logging, logging_config.get("level", "INFO").upper())
-        format_str = logging_config.get(
-            "format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
+        level = getattr(logging, logging_config.get("level", DEFAULT_LOG_LEVEL).upper())
+        format_str = logging_config.get("format", DEFAULT_LOG_FORMAT)
 
         # Create logger
         self.logger = logging.getLogger(__name__)
@@ -269,17 +286,19 @@ class ExperimentController:
 
                         # Handle special scoring metrics
                         scoring_config = hypertuning_config.get(
-                            "scoring", {"name": "accuracy"}
+                            "scoring", {"name": DEFAULT_SCORING_NAME}
                         )
                         if isinstance(scoring_config, str):
                             # Backward compatibility: if scoring is still a string
                             scoring = scoring_config
                         else:
                             # New format: scoring is a dict with name and optional parameters
-                            scoring_name = scoring_config.get("name", "accuracy")
+                            scoring_name = scoring_config.get(
+                                "name", DEFAULT_SCORING_NAME
+                            )
                             if scoring_name in SCORING_NAMES:
                                 alpha = scoring_config.get(
-                                    "alpha", 0.5
+                                    "alpha", DEFAULT_PINBALL_ALPHA
                                 )  # Default to median if not specified
                                 scoring = make_scorer(
                                     mean_pinball_loss,
@@ -292,9 +311,12 @@ class ExperimentController:
                         estimator = GridSearchCV(
                             model,
                             param_grid=hypertuning_config["parameters"],
-                            cv=hypertuning_config.get("cv", 5),
+                            cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
                             scoring=scoring,
-                            verbose=2,  # Increased verbosity
+                            verbose=DEFAULT_GRID_SEARCH_VERBOSE,  # Increased verbosity
+                            n_jobs=hypertuning_config.get(
+                                "n_jobs", -1
+                            ),  # Use all available CPU cores
                         )
                         self.logger.info(
                             f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Grid Search"
@@ -440,7 +462,9 @@ class ExperimentController:
             summary["model_configs"].append(
                 {
                     "path": model_config_info["path"],
-                    "model_type": model_config.get("model", {}).get("type", "unknown"),
+                    "model_type": model_config.get("model", {}).get(
+                        "type", DEFAULT_MODEL_TYPE
+                    ),
                     "hypertuning": "hypertuning" in model_config,
                 }
             )
@@ -465,7 +489,7 @@ class ExperimentController:
             )
 
         # Save summary as YAML
-        summary_file = os.path.join(self.output_dir, "experiment_summary.yaml")
+        summary_file = os.path.join(self.output_dir, EXPERIMENT_SUMMARY_FILE)
         with open(summary_file, "w") as f:
             yaml.dump(summary, f, default_flow_style=False, indent=2)
 
@@ -479,11 +503,11 @@ class ExperimentController:
         if not self.output_dir:
             return
 
-        configs_dir = os.path.join(self.output_dir, "configs")
+        configs_dir = os.path.join(self.output_dir, CONFIGS_DIR)
         os.makedirs(configs_dir, exist_ok=True)
 
         # Save experiment config
-        experiment_config_file = os.path.join(configs_dir, "experiment_config.yaml")
+        experiment_config_file = os.path.join(configs_dir, EXPERIMENT_CONFIG_FILE)
         with open(experiment_config_file, "w") as f:
             yaml.dump(self.experiment_config, f, default_flow_style=False, indent=2)
         self.logger.info(

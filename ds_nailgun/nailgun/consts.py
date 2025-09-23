@@ -50,3 +50,28 @@ STRING_FEATURE_GROUPS = ["categorical", "string"]
 HYPERTUNING_METHODS = ["grid_search"]
 SCORING_NAMES = ["pinball_loss"]
 SAVE_FORMATS = ["joblib", "pickle"]
+
+# Directory names
+DEFAULT_BASE_DIR = "experiments"
+MODELS_DIR = "models"
+RESULTS_DIR = "results"
+LOGS_DIR = "logs"
+CONFIGS_DIR = "configs"
+
+# File naming patterns
+EXPERIMENT_CONFIG_FILE = "experiment_config.yaml"
+EXPERIMENT_SUMMARY_FILE = "experiment_summary.yaml"
+
+# Default values for controller
+DEFAULT_CV_FOLDS = 5
+DEFAULT_GRID_SEARCH_VERBOSE = 2
+DEFAULT_PINBALL_ALPHA = 0.5
+DEFAULT_SCORING_NAME = "accuracy"
+DEFAULT_MODEL_TYPE = "unknown"
+
+# Logging defaults
+DEFAULT_LOG_LEVEL = "INFO"
+DEFAULT_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Timestamp format
+TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"

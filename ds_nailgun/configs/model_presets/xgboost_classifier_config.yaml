@@ -11,6 +11,7 @@ model:
     colsample_bytree: 0.8
     random_state: 1986
     verbosity: 2  # Increased verbosity: 0=silent, 1=warning, 2=info, 3=debug
+    n_jobs: -1  # Use all available CPU cores
 
 # Optional hyperparameter tuning configuration
 hypertuning:
@@ -25,3 +26,4 @@ hypertuning:
   cv: 5
   scoring:
     name: 'accuracy'
+  n_jobs: -1  # Use all available CPU cores for parallel grid search
