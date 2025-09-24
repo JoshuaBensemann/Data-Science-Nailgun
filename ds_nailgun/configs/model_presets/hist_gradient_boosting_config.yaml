@@ -7,35 +7,35 @@ model:
   type: HistGradientBoostingRegressor
   library: sklearn.ensemble
   parameters:
-    max_iter: 1000  # Maximum number of iterations
+    max_iter: 500  # Reduced from 1000 for faster training
     max_depth: 6
     learning_rate: 0.1
     max_leaf_nodes: 31
     min_samples_leaf: 20
     random_state: 1986
-    verbose: 0  # Silent
-    early_stopping: true
-    validation_fraction: 0.1
-    n_iter_no_change: 10
+    n_jobs: -1  # Use all available CPU cores
+    verbose: 2  # Verbose
+    early_stopping: false  # Disabled to allow full training
+    # Removed validation_fraction and n_iter_no_change since early_stopping is false
     # Note: loss='quantile' is not supported, using default 'least_squares'
     # For quantile regression, use other models in this directory
 
 # Optional hyperparameter tuning configuration
 hypertuning:
   method: "halving_random_search"  # Successive halving with random search for efficient large-scale optimization
-  n_candidates: 200  # Number of candidate parameter combinations to evaluate initially
+  n_candidates: 50  # Extensive number of candidates for thorough search
   parameters:
-    max_depth: [3, 4, 5, 6, 7, 8, 9, 10, None]
-    learning_rate: [0.01, 0.05, 0.1, 0.15, 0.2, 0.3]
-    max_leaf_nodes: [15, 31, 63, 127, 255]
-    min_samples_leaf: [10, 20, 30, 50, 100]
-    l2_regularization: [0.0, 0.1, 0.5, 1.0, 5.0]  # L2 regularization
-    verbose: [0]  # Silent during tuning
+    max_depth: [3, 4, 6, 8, 10, None]  # Extended depth range
+    learning_rate: [0.005, 0.01, 0.05, 0.1, 0.2, 0.3]  # Broader learning rate range
+    max_leaf_nodes: [15, 31, 63, 127, 255]  # Extended leaf node options
+    min_samples_leaf: [5, 10, 20, 30, 50, 100]  # Extended minimum samples per leaf
+    l2_regularization: [0.0, 0.01, 0.1, 1.0, 5.0, 10.0]  # Extended L2 regularization
+    max_bins: [128, 255]  # Histogram bin options
+    verbose: [2]  # Verbose during tuning
   cv: 3  # Cross-validation folds
   scoring:
     name: 'neg_mean_squared_error'  # Using MSE since quantile loss not supported
   n_jobs: 1  # Halving search doesn't parallelize well
   factor: 3  # Halving factor - eliminate 2/3 of candidates each round
   resource: 'n_samples'  # Resource parameter to optimize (number of training samples)
-  max_resources: 'auto'  # Use all available training samples
-  min_resources: 10000  # Minimum samples to start with (about 10% of typical training sets)
+  

@@ -4,7 +4,7 @@ model:
   type: RandomForestQuantileRegressor
   library: quantile_forest
   parameters:
-    n_estimators: 500  # Increased for better ensemble performance
+    n_estimators: 300  # Reduced from 500 for faster training
     max_depth: null
     min_samples_split: 2
     min_samples_leaf: 1
@@ -16,12 +16,15 @@ model:
 # Optional hyperparameter tuning configuration
 hypertuning:
   method: "halving_random_search"  # Successive halving with random search for efficient large-scale optimization
-  n_candidates: 200  # Number of candidate parameter combinations to evaluate initially
+  n_candidates: 50  # Extensive number of candidates for thorough search
   parameters:
-    max_depth: [None, 5, 10, 15, 20, 25, 30, 40]
-    min_samples_split: [2, 3, 5, 7, 10, 15]
-    min_samples_leaf: [1, 2, 3, 4, 5, 8, 10]
-    max_features: ['sqrt', 'log2', None, 0.3, 0.5, 0.7, 0.9]  # Feature selection
+    n_estimators: [50, 100, 200, 300, 500]  # Extended estimator range
+    max_depth: [None, 10, 20, 30, 50]  # Extended depth range
+    min_samples_split: [2, 5, 10, 15, 20]  # Extended minimum samples to split
+    min_samples_leaf: [1, 2, 4, 8, 10]  # Extended minimum samples per leaf
+    max_features: ['sqrt', 'log2', None, 0.5, 0.7, 0.9]  # Extended feature selection
+    bootstrap: [True, False]  # Bootstrap options
+    max_samples: [0.6, 0.8, 1.0]  # Bootstrap sample fractions
   cv: 3  # Cross-validation folds
   scoring:
     name: 'pinball_loss'
@@ -29,5 +32,3 @@ hypertuning:
   n_jobs: 1  # Halving search doesn't parallelize well
   factor: 3  # Halving factor - eliminate 2/3 of candidates each round
   resource: 'n_samples'  # Resource parameter to optimize (number of training samples)
-  max_resources: 'auto'  # Use all available training samples
-  min_resources: 10000  # Minimum samples to start with (about 10% of typical training sets)

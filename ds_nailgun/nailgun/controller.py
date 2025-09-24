@@ -35,11 +35,8 @@ from .consts import (
     DEFAULT_LOG_LEVEL,
     DEFAULT_LOG_FORMAT,
     TIMESTAMP_FORMAT,
-    DEFAULT_HALVING_FACTOR,
     DEFAULT_HALVING_RESOURCE,
     DEFAULT_HALVING_MAX_RESOURCES,
-    DEFAULT_HALVING_MIN_RESOURCES,
-    DEFAULT_HALVING_N_JOBS,
     DEFAULT_HALVING_N_CANDIDATES,
 )
 from tqdm import tqdm
@@ -377,13 +374,11 @@ class ExperimentController:
                                     cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
                                     scoring=scoring,
                                     verbose=DEFAULT_GRID_SEARCH_VERBOSE,
-                                    n_jobs=hypertuning_config.get(
-                                        "n_jobs", DEFAULT_HALVING_N_JOBS
-                                    ),  # Halving doesn't support parallel well
+                                    n_jobs=1,  # Halving doesn't support parallel well - force single job
                                     random_state=42,  # For reproducibility
                                     factor=hypertuning_config.get(
-                                        "factor", DEFAULT_HALVING_FACTOR
-                                    ),  # Default halving factor
+                                        "factor", 3
+                                    ),  # Default halving factor for early stopping
                                     resource=hypertuning_config.get(
                                         "resource", DEFAULT_HALVING_RESOURCE
                                     ),  # Resource to allocate
@@ -391,8 +386,8 @@ class ExperimentController:
                                         "max_resources", DEFAULT_HALVING_MAX_RESOURCES
                                     ),  # Max resources parameter
                                     min_resources=hypertuning_config.get(
-                                        "min_resources", DEFAULT_HALVING_MIN_RESOURCES
-                                    ),  # Min resources parameter
+                                        "min_resources", "exhaust"
+                                    ),  # Min resources parameter - allow early stopping
                                 )
                                 self.logger.info(
                                     f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Halving Grid Search"
@@ -408,13 +403,11 @@ class ExperimentController:
                                     cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
                                     scoring=scoring,
                                     verbose=DEFAULT_GRID_SEARCH_VERBOSE,
-                                    n_jobs=hypertuning_config.get(
-                                        "n_jobs", DEFAULT_HALVING_N_JOBS
-                                    ),  # Halving doesn't support parallel well
+                                    n_jobs=1,  # Halving doesn't support parallel well - force single job
                                     random_state=42,  # For reproducibility
                                     factor=hypertuning_config.get(
-                                        "factor", DEFAULT_HALVING_FACTOR
-                                    ),  # Default halving factor
+                                        "factor", 3
+                                    ),  # Default halving factor for early stopping
                                     resource=hypertuning_config.get(
                                         "resource", DEFAULT_HALVING_RESOURCE
                                     ),  # Resource to allocate
@@ -422,8 +415,8 @@ class ExperimentController:
                                         "max_resources", DEFAULT_HALVING_MAX_RESOURCES
                                     ),  # Max resources parameter
                                     min_resources=hypertuning_config.get(
-                                        "min_resources", DEFAULT_HALVING_MIN_RESOURCES
-                                    ),  # Min resources parameter
+                                        "min_resources", "exhaust"
+                                    ),  # Min resources parameter - allow early stopping
                                 )
                                 self.logger.info(
                                     f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Halving Random Search ({n_candidates} candidates)"
@@ -484,8 +477,68 @@ class ExperimentController:
                                         "accuracy" if is_classification else "r2"
                                     )
 
-                                # Make predictions and compute the score
-                                y_pred = pipeline.predict(X_val)
+                                # Make predictions using the best estimator with proper preprocessing
+                                # Handle different pipeline types (base pipeline vs hyperparameter search wrappers)
+                                if hasattr(pipeline, "best_estimator_"):
+                                    # For hyperparameter search objects, get the best estimator (the actual Pipeline)
+                                    best_pipeline = pipeline.best_estimator_
+                                else:
+                                    # For base pipelines
+                                    best_pipeline = pipeline
+
+                                # Apply preprocessing transformation using the fitted preprocessing step
+                                preprocessing_step = best_pipeline.named_steps.get(
+                                    "preprocessing"
+                                )
+                                if preprocessing_step is not None:
+                                    X_val_processed = preprocessing_step.transform(
+                                        X_val
+                                    )
+                                else:
+                                    # Fallback if no preprocessing step found
+                                    X_val_processed = X_val
+
+                                # Make predictions using the processed validation data
+                                y_pred = best_pipeline.named_steps["model"].predict(
+                                    X_val_processed
+                                )
+
+                                # Check for NaN values in predictions and validation targets
+                                y_pred_nan_mask = pd.isna(y_pred)
+                                y_val_nan_mask = pd.isna(y_val)
+
+                                # Combine masks to filter out any rows with NaN in either predictions or targets
+                                valid_mask = ~(y_pred_nan_mask | y_val_nan_mask)
+
+                                if not valid_mask.any():
+                                    self.logger.warning(
+                                        "  All predictions or validation targets are NaN - skipping validation score"
+                                    )
+                                    continue
+
+                                # Filter out NaN values
+                                y_pred_clean = (
+                                    y_pred[valid_mask]
+                                    if hasattr(y_pred, "__getitem__")
+                                    else y_pred
+                                )
+                                y_val_clean = (
+                                    y_val[valid_mask]
+                                    if hasattr(y_val, "__getitem__")
+                                    else y_val
+                                )
+
+                                # Additional check for numpy arrays
+                                if hasattr(y_pred_clean, "values"):
+                                    y_pred_clean = y_pred_clean.values
+                                if hasattr(y_val_clean, "values"):
+                                    y_val_clean = y_val_clean.values
+
+                                nan_count = (~valid_mask).sum()
+                                if nan_count > 0:
+                                    self.logger.warning(
+                                        f"  Filtered out {nan_count} NaN values from validation data"
+                                    )
 
                                 # Calculate score based on the metric
                                 if validation_metric == "accuracy" or (
@@ -494,7 +547,9 @@ class ExperimentController:
                                 ):
                                     from sklearn.metrics import accuracy_score
 
-                                    validation_score = accuracy_score(y_val, y_pred)
+                                    validation_score = accuracy_score(
+                                        y_val_clean, y_pred_clean
+                                    )
                                     self.logger.info(
                                         f"  Validation accuracy: {validation_score:.4f}"
                                     )
@@ -504,14 +559,16 @@ class ExperimentController:
                                 ):
                                     from sklearn.metrics import r2_score
 
-                                    validation_score = r2_score(y_val, y_pred)
+                                    validation_score = r2_score(
+                                        y_val_clean, y_pred_clean
+                                    )
                                     self.logger.info(
                                         f"  Validation R²: {validation_score:.4f}"
                                     )
                                 elif validation_metric == "neg_mean_squared_error":
                                     from sklearn.metrics import mean_squared_error
 
-                                    mse = mean_squared_error(y_val, y_pred)
+                                    mse = mean_squared_error(y_val_clean, y_pred_clean)
                                     validation_score = (
                                         -1.0 * mse
                                     )  # Negate for consistent direction
@@ -538,7 +595,7 @@ class ExperimentController:
                                         alpha = DEFAULT_PINBALL_ALPHA
 
                                     pinball_loss = mean_pinball_loss(
-                                        y_val, y_pred, alpha=alpha
+                                        y_val_clean, y_pred_clean, alpha=alpha
                                     )
                                     validation_score = (
                                         -1.0 * pinball_loss
@@ -551,7 +608,9 @@ class ExperimentController:
                                     if is_classification:
                                         from sklearn.metrics import accuracy_score
 
-                                        validation_score = accuracy_score(y_val, y_pred)
+                                        validation_score = accuracy_score(
+                                            y_val_clean, y_pred_clean
+                                        )
                                         validation_metric = "accuracy"
                                         self.logger.info(
                                             f"  Validation accuracy: {validation_score:.4f}"
@@ -559,7 +618,9 @@ class ExperimentController:
                                     else:
                                         from sklearn.metrics import r2_score
 
-                                        validation_score = r2_score(y_val, y_pred)
+                                        validation_score = r2_score(
+                                            y_val_clean, y_pred_clean
+                                        )
                                         validation_metric = "r2"
                                         self.logger.info(
                                             f"  Validation R²: {validation_score:.4f}"

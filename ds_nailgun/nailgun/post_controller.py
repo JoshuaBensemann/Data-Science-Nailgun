@@ -66,5 +66,19 @@ class PostController:
                 if model_file:
                     model = load_model(str(model_file), silent=True)
                     pred = model.predict(val_df[features])
-                    acc = accuracy_score(true, pred)
-                    print(f"Model {model_name}: accuracy {acc:.4f}")
+
+                    # Filter out NaN values from predictions and true values
+                    nan_mask = ~(pd.isna(pred) | pd.isna(true))
+                    pred_clean = pred[nan_mask]
+                    true_clean = true[nan_mask]
+
+                    if len(pred_clean) == 0:
+                        print(
+                            f"Model {model_name}: all predictions or true values are NaN, skipping accuracy calculation"
+                        )
+                        continue
+
+                    acc = accuracy_score(true_clean, pred_clean)
+                    print(
+                        f"Model {model_name}: accuracy {acc:.4f} (on {len(pred_clean)}/{len(pred)} non-NaN samples)"
+                    )

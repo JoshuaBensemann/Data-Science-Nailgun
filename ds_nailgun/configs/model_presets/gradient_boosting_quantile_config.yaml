@@ -4,14 +4,14 @@ model:
   type: GradientBoostingRegressor
   library: sklearn.ensemble
   parameters:
-    n_estimators: 1000  # Number of boosting stages
+    n_estimators: 500  # Reduced from 1000 for faster training
     max_depth: 6
     learning_rate: 0.1
     min_samples_split: 2
     min_samples_leaf: 1
-    verbose: 0  # Silent
-    n_iter_no_change: 10  # Early stopping
-    validation_fraction: 0.1
+    subsample: 0.8  # Added subsample for better performance
+    verbose: 2  # Verbose
+    # Removed early stopping parameters for full training
     # Quantile regression specific parameters
     loss: 'quantile'
     alpha: 0.9  # Quantile level (0.9 = 90th percentile)
@@ -19,15 +19,16 @@ model:
 # Optional hyperparameter tuning configuration
 hypertuning:
   method: "halving_random_search"  # Successive halving with random search for efficient large-scale optimization
-  n_candidates: 200  # Number of candidate parameter combinations to evaluate initially
+  n_candidates: 50  # Extensive number of candidates for thorough search
   parameters:
-    max_depth: [3, 4, 5, 6, 7, 8, 9, 10]
-    learning_rate: [0.01, 0.05, 0.1, 0.15, 0.2, 0.3]
-    subsample: [0.6, 0.7, 0.8, 0.9, 1.0]
-    min_samples_split: [2, 5, 10, 15, 20]
-    min_samples_leaf: [1, 2, 5, 10, 15]
-    max_features: ['sqrt', 'log2', None, 0.5, 0.7, 0.9]  # Feature selection
-    verbose: [0]  # Silent during tuning
+    max_depth: [3, 4, 5, 6, 8, 10]  # Extended depth range
+    learning_rate: [0.005, 0.01, 0.05, 0.1, 0.2, 0.3]  # Broader learning rate range
+    subsample: [0.6, 0.7, 0.8, 0.9, 1.0]  # Extended subsample range
+    min_samples_split: [2, 5, 10, 20, 50]  # Extended minimum samples to split
+    min_samples_leaf: [1, 2, 5, 10, 20]  # Extended minimum samples per leaf
+    max_features: ['sqrt', 'log2', None, 0.5, 0.7, 0.9]  # Extended feature selection
+    alpha: [0.1, 0.5, 0.9]  # Quantile levels for tuning
+    verbose: [2]  # Verbose during tuning
   cv: 3  # Cross-validation folds
   scoring:
     name: 'pinball_loss'
@@ -35,5 +36,4 @@ hypertuning:
   n_jobs: 1  # Halving search doesn't parallelize well
   factor: 3  # Halving factor - eliminate 2/3 of candidates each round
   resource: 'n_samples'  # Resource parameter to optimize (number of training samples)
-  max_resources: 'auto'  # Use all available training samples
-  min_resources: 10000  # Minimum samples to start with (about 10% of typical training sets)
+  

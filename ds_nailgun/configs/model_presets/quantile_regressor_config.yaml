@@ -7,3 +7,15 @@ model:
     quantile: 0.9
     alpha: 0.01
     solver: "highs"
+
+# Optional hyperparameter tuning configuration
+hypertuning:
+  method: "grid_search"  # Grid search for linear model
+  parameters:
+    alpha: [0.001, 0.01, 0.1, 1.0, 10.0]  # Regularization strength
+    solver: ["highs", "highs-ds", "highs-ipm"]  # Different solver options
+  cv: 3  # Cross-validation folds
+  scoring:
+    name: 'pinball_loss'
+    alpha: 0.9  # Quantile level for pinball loss scoring
+  n_jobs: -1  # Use all available CPU cores

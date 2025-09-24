@@ -604,41 +604,62 @@ class EnsembleCreator:
             # Make predictions
             y_pred = ensemble.predict(X)
 
+            # Filter out NaN values from predictions and true values
+            nan_mask = ~(pd.isna(y_pred) | pd.isna(y))
+            y_pred_clean = y_pred[nan_mask]
+            y_clean = y[nan_mask]
+
+            if len(y_pred_clean) == 0:
+                self.logger.warning(
+                    f"All predictions or true values are NaN for ensemble {ensemble_name}, skipping evaluation"
+                )
+                return {}
+
             # Calculate metrics based on model type
             metrics = {}
 
             if is_classifier:
                 # Classification metrics
-                metrics["accuracy"] = accuracy_score(y, y_pred)
+                metrics["accuracy"] = accuracy_score(y_clean, y_pred_clean)
 
                 # Check if binary or multiclass
-                unique_classes = np.unique(y)
+                unique_classes = np.unique(y_clean)
                 if len(unique_classes) == 2:
                     # Binary classification
-                    metrics["precision"] = precision_score(y, y_pred, average="binary")
-                    metrics["recall"] = recall_score(y, y_pred, average="binary")
-                    metrics["f1"] = f1_score(y, y_pred, average="binary")
+                    metrics["precision"] = precision_score(
+                        y_clean, y_pred_clean, average="binary"
+                    )
+                    metrics["recall"] = recall_score(
+                        y_clean, y_pred_clean, average="binary"
+                    )
+                    metrics["f1"] = f1_score(y_clean, y_pred_clean, average="binary")
                 else:
                     # Multiclass classification
                     metrics["precision_macro"] = precision_score(
-                        y, y_pred, average="macro"
+                        y_clean, y_pred_clean, average="macro"
                     )
-                    metrics["recall_macro"] = recall_score(y, y_pred, average="macro")
-                    metrics["f1_macro"] = f1_score(y, y_pred, average="macro")
+                    metrics["recall_macro"] = recall_score(
+                        y_clean, y_pred_clean, average="macro"
+                    )
+                    metrics["f1_macro"] = f1_score(
+                        y_clean, y_pred_clean, average="macro"
+                    )
 
                     metrics["precision_weighted"] = precision_score(
-                        y, y_pred, average="weighted"
+                        y_clean, y_pred_clean, average="weighted"
                     )
                     metrics["recall_weighted"] = recall_score(
-                        y, y_pred, average="weighted"
+                        y_clean, y_pred_clean, average="weighted"
                     )
-                    metrics["f1_weighted"] = f1_score(y, y_pred, average="weighted")
+                    metrics["f1_weighted"] = f1_score(
+                        y_clean, y_pred_clean, average="weighted"
+                    )
             else:
                 # Regression metrics
-                metrics["mae"] = mean_absolute_error(y, y_pred)
-                metrics["mse"] = mean_squared_error(y, y_pred)
+                metrics["mae"] = mean_absolute_error(y_clean, y_pred_clean)
+                metrics["mse"] = mean_squared_error(y_clean, y_pred_clean)
                 metrics["rmse"] = np.sqrt(metrics["mse"])
-                metrics["r2"] = r2_score(y, y_pred)
+                metrics["r2"] = r2_score(y_clean, y_pred_clean)
 
             return metrics
 

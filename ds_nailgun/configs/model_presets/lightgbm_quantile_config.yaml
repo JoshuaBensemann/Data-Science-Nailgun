@@ -4,30 +4,38 @@ model:
   type: LGBMRegressor
   library: lightgbm
   parameters:
-    n_estimators: 1000  # Increased for early stopping
-    max_depth: 6
+    n_estimators: 1000  # Increased for full training without early stopping
+    max_depth: 10  # Limited depth to prevent overfitting and split warnings
+    num_leaves: 100  # Maximum number of leaves per tree
     learning_rate: 0.1
     subsample: 0.8
     feature_fraction: 0.8  # LightGBM's version of colsample_bytree
-    min_child_samples: 20  # Minimum samples per leaf to reduce unnecessary splits
+    min_child_samples: 10  # Minimum samples per leaf to reduce overfitting
     random_state: 1986
     lambda_l1: 0.0  # L1 regularization
     lambda_l2: 1.0  # L2 regularization
+    min_split_gain: 0.001  # Small minimum gain threshold to avoid -inf warnings
+    n_jobs: -1  # Use all available CPU cores
+    verbosity: 2  # Verbose mode
     # Quantile regression specific parameters
     objective: 'quantile'
     alpha: 0.9  # Quantile level (0.9 = 90th percentile)
+    eval_metric: 'quantile'
 
 # Optional hyperparameter tuning configuration
 hypertuning:
   method: "halving_random_search"  # Successive halving with random search for efficient large-scale optimization
-  n_candidates: 200  # Number of candidate parameter combinations to evaluate initially
+  n_candidates: 50  # Extensive number of candidates for thorough search
   parameters:
-    max_depth: [3, 4, 5, 6, 8, 10, -1]  # -1 means no limit
-    learning_rate: [0.01, 0.05, 0.1, 0.2, 0.3]
-    subsample: [0.6, 0.7, 0.8, 0.9, 1.0]
-    feature_fraction: [0.6, 0.7, 0.8, 0.9, 1.0]  # LightGBM's feature fraction parameter (tune this, not colsample_bytree)
-    num_leaves: [20, 31, 50, 100, 150]  # Added num_leaves for better control
-    min_child_samples: [10, 20, 30, 50, 100]  # Added min_child_samples
+    max_depth: [6, 8, 10, 12, 15, -1]  # Extended depth range including unlimited
+    learning_rate: [0.005, 0.01, 0.05, 0.1, 0.2, 0.3]  # Broader learning rate range
+    subsample: [0.6, 0.7, 0.8, 0.9, 1.0]  # Extended subsample range
+    feature_fraction: [0.6, 0.7, 0.8, 0.9, 1.0]  # Extended feature fraction range
+    num_leaves: [20, 50, 100, 150, 200, 250]  # Extended leaf count range
+    min_child_samples: [5, 10, 20, 30, 50, 100]  # Extended minimum child samples
+    min_split_gain: [0.0, 0.001, 0.01, 0.1, 0.2]  # Extended minimum split gain
+    lambda_l1: [0.0, 0.001, 0.01, 0.1, 1.0]  # L1 regularization
+    lambda_l2: [0.0, 0.001, 0.01, 0.1, 1.0]  # L2 regularization
   cv: 3  # Cross-validation folds
   scoring:
     name: 'pinball_loss'
@@ -35,5 +43,3 @@ hypertuning:
   n_jobs: 1  # Halving search doesn't parallelize well
   factor: 3  # Halving factor - eliminate 2/3 of candidates each round
   resource: 'n_samples'  # Resource parameter to optimize (number of training samples)
-  max_resources: 'auto'  # Use all available training samples
-  min_resources: 10000  # Minimum samples to start with (about 10% of typical training sets)

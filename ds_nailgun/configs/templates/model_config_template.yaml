@@ -16,6 +16,7 @@ model:
     min_samples_split: 2  # Minimum samples required to split an internal node
     min_samples_leaf: 1   # Minimum samples required to be at a leaf node
     random_state: 42     # Random state for reproducibility
+    n_jobs: -1           # Use all available CPU cores
     # For XGBoost models, you might use:
     # learning_rate: 0.1
     # subsample: 0.8
@@ -68,6 +69,6 @@ hypertuning:
   n_jobs: 1
   # Halving search parameters (only used for halving methods)
   factor: 3  # Elimination factor - remove 2/3 of candidates each round
-  resource: 'n_estimators'  # Resource parameter to optimize (usually n_estimators)
+  resource: 'model__n_estimators'  # Resource parameter to optimize (usually n_estimators)
   max_resources: 1000  # Maximum resources to use in final round
   min_resources: 25  # Minimum resources to start with</content>  # Only used for random_search

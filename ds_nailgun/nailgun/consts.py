@@ -76,11 +76,12 @@ EXPERIMENT_CONFIG_FILE = "experiment_config.yaml"
 EXPERIMENT_SUMMARY_FILE = "experiment_summary.yaml"
 
 # Default values for controller
-DEFAULT_CV_FOLDS = 5
-DEFAULT_GRID_SEARCH_VERBOSE = 2
+DEFAULT_CV_FOLDS = 3  # Reduced from 5 for faster training
+DEFAULT_GRID_SEARCH_VERBOSE = 2  # Reduced from 2 for less verbose output
 DEFAULT_PINBALL_ALPHA = 0.5
 DEFAULT_SCORING_NAME = "accuracy"
 DEFAULT_MODEL_TYPE = "unknown"
+DEFAULT_PARALLEL_EXPERIMENTS = 2  # Number of experiments to run in parallel
 
 # Logging defaults
 DEFAULT_LOG_LEVEL = "INFO"

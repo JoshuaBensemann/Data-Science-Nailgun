@@ -54,6 +54,6 @@ preprocessing:
     travel_details:
       method: "one_hot_encoding"  # Encode embarkation ports
   feature_selection:
-    method: "variance_threshold"  # Remove low-variance features
+    method: "rfe"  # Recursive Feature Elimination
     params:
-      threshold: 0.01  # Remove features with variance below 1%</content>
+      n_features: 5  # Select top 5 features
