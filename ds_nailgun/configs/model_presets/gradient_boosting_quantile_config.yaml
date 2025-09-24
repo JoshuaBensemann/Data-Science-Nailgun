@@ -7,8 +7,8 @@ model:
     n_estimators: 1000  # Number of boosting stages
     max_depth: 6
     learning_rate: 0.1
-    subsample: 0.8
-    random_state: 1986
+    min_samples_split: 2
+    min_samples_leaf: 1
     verbose: 0  # Silent
     n_iter_no_change: 10  # Early stopping
     validation_fraction: 0.1
@@ -35,6 +35,6 @@ hypertuning:
     alpha: 0.9  # Quantile level for pinball loss scoring
   n_jobs: 1  # Halving search doesn't parallelize well
   factor: 3  # Halving factor - eliminate 2/3 of candidates each round
-  resource: 'n_estimators'  # Resource parameter to optimize (number of trees)
-  max_resources: 1000  # Maximum resources (n_estimators) to use
-  min_resources: 50  # Minimum resources to start with
+  resource: 'n_samples'  # Resource parameter to optimize (number of training samples)
+  max_resources: 'auto'  # Use all available training samples
+  min_resources: 50000  # Minimum samples to start with (about 10% of typical training sets)

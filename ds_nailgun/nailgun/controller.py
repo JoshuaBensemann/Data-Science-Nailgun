@@ -1,18 +1,3 @@
-"""
-Datimport yaml
-import logging
-import joblib
-import os
-from datetime import datetime
-from sklearn.pipeline import Pipeline
-from sklearn.experimental import enable_halving_search_cv  # noqa
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, HalvingGridSearchCV
-from sklearn.metrics import make_scorer, mean_pinball_loss Experiment Controller
-
-Orchestrates data science experiments by coordinating
-multiple modules and configuration files.
-"""
-
 import yaml
 import logging
 import joblib
@@ -462,9 +447,140 @@ class ExperimentController:
                             "model_name": type(model).__name__,
                         }
 
+                        # Calculate validation score if validation data is available
+                        validation_score = None
+                        validation_metric = None
+                        if self.data[data_config_name]["validation"] is not None:
+                            try:
+                                # Get validation data
+                                validation_data = self.data[data_config_name][
+                                    "validation"
+                                ]
+                                X_val = validation_data.drop(columns=columns_to_drop)
+                                y_val = validation_data[
+                                    data_config["data"]["target"]["column"]
+                                ]
+
+                                # Find the metric that was used for hypertuning
+                                # We'll use the same metric type when possible
+                                unique_target_values = len(set(y_val))
+                                is_classification = unique_target_values < 10
+
+                                # For hyperparameter search, we extract the scoring info
+                                # from the hypertuning_config directly to avoid attribute errors
+                                if "hypertuning" in full_config:
+                                    scoring_config = full_config["hypertuning"].get(
+                                        "scoring", {"name": DEFAULT_SCORING_NAME}
+                                    )
+                                    if isinstance(scoring_config, str):
+                                        validation_metric = scoring_config
+                                    elif isinstance(scoring_config, dict):
+                                        validation_metric = scoring_config.get(
+                                            "name", DEFAULT_SCORING_NAME
+                                        )
+                                else:
+                                    # Default metrics based on problem type
+                                    validation_metric = (
+                                        "accuracy" if is_classification else "r2"
+                                    )
+
+                                # Make predictions and compute the score
+                                y_pred = pipeline.predict(X_val)
+
+                                # Calculate score based on the metric
+                                if validation_metric == "accuracy" or (
+                                    validation_metric == DEFAULT_SCORING_NAME
+                                    and is_classification
+                                ):
+                                    from sklearn.metrics import accuracy_score
+
+                                    validation_score = accuracy_score(y_val, y_pred)
+                                    self.logger.info(
+                                        f"  Validation accuracy: {validation_score:.4f}"
+                                    )
+                                elif (
+                                    validation_metric == "r2"
+                                    or validation_metric == "r2_score"
+                                ):
+                                    from sklearn.metrics import r2_score
+
+                                    validation_score = r2_score(y_val, y_pred)
+                                    self.logger.info(
+                                        f"  Validation R²: {validation_score:.4f}"
+                                    )
+                                elif validation_metric == "neg_mean_squared_error":
+                                    from sklearn.metrics import mean_squared_error
+
+                                    mse = mean_squared_error(y_val, y_pred)
+                                    validation_score = (
+                                        -1.0 * mse
+                                    )  # Negate for consistent direction
+                                    self.logger.info(
+                                        f"  Validation MSE: {mse:.4f} (score: {validation_score:.4f})"
+                                    )
+                                elif (
+                                    validation_metric == "mean_pinball_loss"
+                                    or validation_metric in SCORING_NAMES
+                                ):
+                                    # For pinball loss, use the same alpha value as in hypertuning
+                                    if "hypertuning" in full_config:
+                                        scoring_config = full_config["hypertuning"].get(
+                                            "scoring", {"name": DEFAULT_SCORING_NAME}
+                                        )
+                                        alpha = (
+                                            scoring_config.get(
+                                                "alpha", DEFAULT_PINBALL_ALPHA
+                                            )
+                                            if isinstance(scoring_config, dict)
+                                            else DEFAULT_PINBALL_ALPHA
+                                        )
+                                    else:
+                                        alpha = DEFAULT_PINBALL_ALPHA
+
+                                    pinball_loss = mean_pinball_loss(
+                                        y_val, y_pred, alpha=alpha
+                                    )
+                                    validation_score = (
+                                        -1.0 * pinball_loss
+                                    )  # Negate for consistent direction (higher is better)
+                                    self.logger.info(
+                                        f"  Validation pinball loss (alpha={alpha}): {pinball_loss:.4f} (score: {validation_score:.4f})"
+                                    )
+                                else:
+                                    # Default to standard metrics if we don't recognize the metric
+                                    if is_classification:
+                                        from sklearn.metrics import accuracy_score
+
+                                        validation_score = accuracy_score(y_val, y_pred)
+                                        validation_metric = "accuracy"
+                                        self.logger.info(
+                                            f"  Validation accuracy: {validation_score:.4f}"
+                                        )
+                                    else:
+                                        from sklearn.metrics import r2_score
+
+                                        validation_score = r2_score(y_val, y_pred)
+                                        validation_metric = "r2"
+                                        self.logger.info(
+                                            f"  Validation R²: {validation_score:.4f}"
+                                        )
+
+                                # Store validation score
+                                self.trained_pipelines[experiment_name][
+                                    "validation_score"
+                                ] = validation_score
+                                self.trained_pipelines[experiment_name][
+                                    "validation_metric"
+                                ] = validation_metric
+
+                            except Exception as e:
+                                self.logger.warning(
+                                    f"  Could not calculate validation score: {str(e)}"
+                                )
+
                         # Print best parameters if hypertuning was used
                         if isinstance(
-                            estimator,
+                            pipeline,
                             (
                                 GridSearchCV,
                                 RandomizedSearchCV,
@@ -472,12 +588,24 @@ class ExperimentController:
                                 HalvingRandomSearchCV,
                             ),
                         ):
-                            self.logger.info(
-                                f"  Best parameters: {estimator.best_params_}"
-                            )
-                            self.logger.info(
-                                f"  Best cross-validation score: {estimator.best_score_:.4f}"
-                            )
+                            try:
+                                # Safely access best_params_
+                                best_params = getattr(pipeline, "best_params_", None)
+                                if best_params is not None:
+                                    self.logger.info(
+                                        f"  Best parameters: {best_params}"
+                                    )
+
+                                # Safely access best_score_
+                                best_score = getattr(pipeline, "best_score_", None)
+                                if best_score is not None:
+                                    self.logger.info(
+                                        f"  Best cross-validation score: {best_score:.4f}"
+                                    )
+                            except Exception as e:
+                                self.logger.warning(
+                                    f"  Could not access best parameters/score: {str(e)}"
+                                )
 
                         self.logger.info(
                             f"  Experiment {experiment_name} trained successfully"
@@ -490,10 +618,19 @@ class ExperimentController:
                             self.update_experiment_summary(experiment_name)
 
                     except Exception as e:
-                        self.logger.error(
+                        error_msg = (
                             f"❌ Failed to train experiment {experiment_name}: {str(e)}"
                         )
-                        self.logger.error(f"   Error type: {type(e).__name__}")
+                        error_type_msg = f"   Error type: {type(e).__name__}"
+
+                        # Print to console
+                        print(error_msg)
+                        print(error_type_msg)
+
+                        # Log to file
+                        self.logger.error(error_msg)
+                        self.logger.error(error_type_msg)
+
                         # Continue to next model instead of stopping the entire training process
 
                     finally:
@@ -622,11 +759,22 @@ class ExperimentController:
         pipeline = experiment_info["pipeline"]
         best_score = None
 
-        # Check if pipeline itself has best_score_ (hypertuning case) or nested model has it
-        if hasattr(pipeline, "best_score_"):
-            best_score = float(pipeline.best_score_)
-        elif hasattr(pipeline.named_steps["model"], "best_score_"):
-            best_score = float(pipeline.named_steps["model"].best_score_)
+        # Extract best_score safely
+        try:
+            if hasattr(pipeline, "best_score_"):
+                best_score = float(pipeline.best_score_)
+            elif hasattr(pipeline, "named_steps") and hasattr(
+                pipeline.named_steps["model"], "best_score_"
+            ):
+                best_score = float(pipeline.named_steps["model"].best_score_)
+        except Exception:
+            self.logger.warning(f"Could not extract best_score_ for {experiment_name}")
+
+        # Get validation score if available
+        validation_score = experiment_info.get("validation_score", None)
+        validation_metric = experiment_info.get("validation_metric", None)
+        if validation_score is not None:
+            validation_score = float(validation_score)
 
         # Check if this experiment is already in the summary
         existing_experiment = None
@@ -637,25 +785,35 @@ class ExperimentController:
 
         if existing_experiment:
             # Update existing entry
-            existing_experiment.update(
-                {
-                    "data_config": experiment_info["data_config"],
-                    "model_config": experiment_info["model_config"],
-                    "model_name": experiment_info["model_name"],
-                    "best_cv_score": best_score,
-                }
-            )
+            update_data = {
+                "data_config": experiment_info["data_config"],
+                "model_config": experiment_info["model_config"],
+                "model_name": experiment_info["model_name"],
+                "best_cv_score": best_score,
+            }
+            # Add validation score if available
+            if validation_score is not None:
+                update_data["validation_score"] = validation_score
+                if validation_metric is not None:
+                    update_data["validation_metric"] = validation_metric
+
+            existing_experiment.update(update_data)
         else:
             # Add new entry
-            summary["experiments_run"].append(
-                {
-                    "name": experiment_name,
-                    "data_config": experiment_info["data_config"],
-                    "model_config": experiment_info["model_config"],
-                    "model_name": experiment_info["model_name"],
-                    "best_cv_score": best_score,
-                }
-            )
+            new_entry = {
+                "name": experiment_name,
+                "data_config": experiment_info["data_config"],
+                "model_config": experiment_info["model_config"],
+                "model_name": experiment_info["model_name"],
+                "best_cv_score": best_score,
+            }
+            # Add validation score if available
+            if validation_score is not None:
+                new_entry["validation_score"] = validation_score
+                if validation_metric is not None:
+                    new_entry["validation_metric"] = validation_metric
+
+            summary["experiments_run"].append(new_entry)
 
         # Save updated summary
         with open(summary_file, "w") as f:
@@ -729,21 +887,41 @@ class ExperimentController:
             pipeline = experiment_info["pipeline"]
             best_score = None
 
-            # Check if pipeline itself has best_score_ (hypertuning case) or nested model has it
-            if hasattr(pipeline, "best_score_"):
-                best_score = float(pipeline.best_score_)
-            elif hasattr(pipeline.named_steps["model"], "best_score_"):
-                best_score = float(pipeline.named_steps["model"].best_score_)
+            # Extract best_score safely
+            try:
+                if hasattr(pipeline, "best_score_"):
+                    best_score = float(pipeline.best_score_)
+                elif hasattr(pipeline, "named_steps") and hasattr(
+                    pipeline.named_steps["model"], "best_score_"
+                ):
+                    best_score = float(pipeline.named_steps["model"].best_score_)
+            except Exception:
+                self.logger.warning(
+                    f"Could not extract best_score_ for {experiment_name}"
+                )
 
-            summary["experiments_run"].append(
-                {
-                    "name": experiment_name,
-                    "data_config": experiment_info["data_config"],
-                    "model_config": experiment_info["model_config"],
-                    "model_name": experiment_info["model_name"],
-                    "best_cv_score": best_score,
-                }
-            )
+            # Get validation score if available
+            validation_score = experiment_info.get("validation_score", None)
+            validation_metric = experiment_info.get("validation_metric", None)
+            if validation_score is not None:
+                validation_score = float(validation_score)
+
+            # Create experiment summary entry
+            experiment_entry = {
+                "name": experiment_name,
+                "data_config": experiment_info["data_config"],
+                "model_config": experiment_info["model_config"],
+                "model_name": experiment_info["model_name"],
+                "best_cv_score": best_score,
+            }
+
+            # Add validation score if available
+            if validation_score is not None:
+                experiment_entry["validation_score"] = validation_score
+                if validation_metric is not None:
+                    experiment_entry["validation_metric"] = validation_metric
+
+            summary["experiments_run"].append(experiment_entry)
 
         # Save summary as YAML
         summary_file = os.path.join(self.output_dir, EXPERIMENT_SUMMARY_FILE)
@@ -802,46 +980,64 @@ class ExperimentController:
 
     def run_experiment(self):
         """Run the complete experiment pipeline."""
-        self.logger.info("🚀 Starting Data Science Experiment...")
-        self.logger.info(
-            f"Experiment name: {self.experiment_config['experiment']['name']}"
-        )
-        self.logger.info(f"Number of data configs: {len(self.config_paths['data'])}")
-        self.logger.info(f"Number of model configs: {len(self.model_config_paths)}")
+        try:
+            self.logger.info("🚀 Starting Data Science Experiment...")
+            self.logger.info(
+                f"Experiment name: {self.experiment_config['experiment']['name']}"
+            )
+            self.logger.info(
+                f"Number of data configs: {len(self.config_paths['data'])}"
+            )
+            self.logger.info(f"Number of model configs: {len(self.model_config_paths)}")
 
-        # Step 1: Load configurations
-        self.logger.info("📂 Step 1: Loading configurations...")
-        self.load_configs()
-        self.logger.info("✅ Configurations loaded successfully")
+            # Step 1: Load configurations
+            self.logger.info("📂 Step 1: Loading configurations...")
+            self.load_configs()
+            self.logger.info("✅ Configurations loaded successfully")
 
-        # Step 2: Setup data
-        self.logger.info("📊 Step 2: Setting up data...")
-        self.setup_data()
-        self.logger.info("✅ Data setup completed")
+            # Step 2: Setup data
+            self.logger.info("📊 Step 2: Setting up data...")
+            self.setup_data()
+            self.logger.info("✅ Data setup completed")
 
-        # Step 3: Setup preprocessing
-        self.logger.info("🔧 Step 3: Setting up preprocessing pipelines...")
-        self.setup_preprocessing()
-        self.logger.info("✅ Preprocessing pipelines ready")
+            # Step 3: Setup preprocessing
+            self.logger.info("🔧 Step 3: Setting up preprocessing pipelines...")
+            self.setup_preprocessing()
+            self.logger.info("✅ Preprocessing pipelines ready")
 
-        # Step 4: Setup models
-        self.logger.info("🤖 Step 4: Setting up models...")
-        self.setup_models()
-        self.logger.info("✅ Models setup completed")
+            # Step 4: Setup models
+            self.logger.info("🤖 Step 4: Setting up models...")
+            self.setup_models()
+            self.logger.info("✅ Models setup completed")
 
-        # Step 5: Train models (includes incremental saving)
-        self.logger.info("🏋️ Step 5: Training models...")
-        self.train_models()
-        self.logger.info("✅ Model training completed")
+            # Step 5: Train models (includes incremental saving)
+            self.logger.info("🏋️ Step 5: Training models...")
+            self.train_models()
+            self.logger.info("✅ Model training completed")
 
-        # Step 6: Finalize results (configs and summary updates)
-        self.logger.info("💾 Step 6: Finalizing results...")
-        self.save_config_summary()
-        self.logger.info("✅ Results finalized successfully")
+            # Step 6: Finalize results (configs and summary updates)
+            self.logger.info("💾 Step 6: Finalizing results...")
+            self.save_config_summary()
+            self.logger.info("✅ Results finalized successfully")
 
-        self.logger.info("🎉 Experiment complete!")
-        self.logger.info(f"All results saved to: {self.output_dir}")
-        return self.experiment_state
+            self.logger.info("🎉 Experiment complete!")
+            self.logger.info(f"All results saved to: {self.output_dir}")
+            return self.experiment_state
+
+        except Exception as e:
+            error_msg = f"❌ Experiment failed: {str(e)}"
+            error_type_msg = f"   Error type: {type(e).__name__}"
+
+            # Print to console
+            print(error_msg)
+            print(error_type_msg)
+
+            # Log to file
+            self.logger.error(error_msg)
+            self.logger.error(error_type_msg)
+
+            # Re-raise the exception
+            raise
 
     def get_data(self):
         """Get the loaded data."""
@@ -878,9 +1074,20 @@ def run_experiment(experiment_config_path: str) -> ExperimentController:
     Returns:
         ExperimentController: The controller instance with loaded data and configs
     """
-    controller = ExperimentController(experiment_config_path)
-    controller.run_experiment()
-    return controller
+    try:
+        controller = ExperimentController(experiment_config_path)
+        controller.run_experiment()
+        return controller
+    except Exception as e:
+        error_msg = f"❌ Experiment execution failed: {str(e)}"
+        error_type_msg = f"   Error type: {type(e).__name__}"
+
+        # Print to console
+        print(error_msg)
+        print(error_type_msg)
+
+        # Re-raise the exception
+        raise
 
 
 # Example usage

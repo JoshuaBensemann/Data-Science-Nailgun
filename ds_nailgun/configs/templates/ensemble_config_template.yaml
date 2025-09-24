@@ -1,0 +1,39 @@
+# Ensemble Configuration Template
+# This configuration defines how to create ensemble models from trained models
+
+# Ensemble name (required)
+name: "ensemble_name"
+
+# Ensemble method (required)
+# Supported values: 'voting', 'stacking', 'weighted'
+method: "voting"
+
+# Models to include in the ensemble (required)
+# Options:
+#   - "all": Use all trained models
+#   - list of specific model names: ["model1", "model2", ...]
+models: "all"
+
+# ---- Method-specific configurations ----
+
+# For voting ensembles (classification only)
+# Voting type: 'hard' or 'soft'
+voting_type: "soft"
+
+# For stacking ensembles
+# Whether to include original features in final estimator
+passthrough: false
+# Cross-validation folds for stacking
+cv: 5
+# Final estimator (meta-learner) for stacking
+# If not specified, uses a default estimator
+# final_estimator: "path/to/meta_model_config.yaml"
+
+# ---- Weighting configuration ----
+
+# How to weight models in the ensemble
+# Options:
+#   - "uniform": Equal weights (default)
+#   - "performance": Weight by cross-validation performance
+#   - list of specific weights: [0.2, 0.3, 0.5]
+weights: "uniform"

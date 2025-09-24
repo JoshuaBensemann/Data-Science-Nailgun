@@ -37,6 +37,6 @@ hypertuning:
     name: 'neg_mean_squared_error'  # Using MSE since quantile loss not supported
   n_jobs: 1  # Halving search doesn't parallelize well
   factor: 3  # Halving factor - eliminate 2/3 of candidates each round
-  resource: 'max_iter'  # Resource parameter to optimize (number of iterations)
-  max_resources: 1000  # Maximum resources (max_iter) to use
-  min_resources: 50  # Minimum resources to start with
+  resource: 'n_samples'  # Resource parameter to optimize (number of training samples)
+  max_resources: 'auto'  # Use all available training samples
+  min_resources: 50000  # Minimum samples to start with (about 10% of typical training sets)

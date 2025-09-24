@@ -10,8 +10,9 @@ model:
     subsample: 0.8
     colsample_bytree: 0.8
     random_state: 1986
-    verbosity: 1  # Reduced verbosity: 0=silent, 1=warning, 2=info, 3=debug
-    n_jobs: -1  # Use all available CPU cores
+    tree_method: 'hist'  # Use histogram-based algorithm for faster training
+    reg_alpha: 0.0  # L1 regularization
+    reg_lambda: 1.0  # L2 regularization
     # Quantile regression specific parameters
     objective: 'reg:quantileerror'
     quantile_alpha: 0.9  # Quantile level (0.9 = 90th percentile)
@@ -37,6 +38,6 @@ hypertuning:
     alpha: 0.9  # Quantile level for pinball loss scoring
   n_jobs: 1  # Halving search doesn't parallelize well
   factor: 3  # Halving factor - eliminate 2/3 of candidates each round
-  resource: 'n_estimators'  # Resource parameter to optimize (number of trees)
-  max_resources: 1000  # Maximum resources (n_estimators) to use
-  min_resources: 50  # Minimum resources to start with
+  resource: 'n_samples'  # Resource parameter to optimize (number of training samples)
+  max_resources: 'auto'  # Use all available training samples
+  min_resources: 50000  # Minimum samples to start with (about 10% of typical training sets)

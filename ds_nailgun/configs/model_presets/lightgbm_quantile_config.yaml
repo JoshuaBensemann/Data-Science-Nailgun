@@ -11,8 +11,8 @@ model:
     feature_fraction: 0.8  # LightGBM's version of colsample_bytree
     min_child_samples: 20  # Minimum samples per leaf to reduce unnecessary splits
     random_state: 1986
-    verbosity: -1  # More aggressive warning suppression
-    n_jobs: -1  # Use all available CPU cores
+    lambda_l1: 0.0  # L1 regularization
+    lambda_l2: 1.0  # L2 regularization
     # Quantile regression specific parameters
     objective: 'quantile'
     alpha: 0.9  # Quantile level (0.9 = 90th percentile)
@@ -35,6 +35,6 @@ hypertuning:
     alpha: 0.9  # Quantile level for pinball loss scoring
   n_jobs: 1  # Halving search doesn't parallelize well
   factor: 3  # Halving factor - eliminate 2/3 of candidates each round
-  resource: 'n_estimators'  # Resource parameter to optimize (number of trees)
-  max_resources: 1000  # Maximum resources (n_estimators) to use
-  min_resources: 10  # Minimum resources to start with
+  resource: 'n_samples'  # Resource parameter to optimize (number of training samples)
+  max_resources: 'auto'  # Use all available training samples
+  min_resources: 50000  # Minimum samples to start with (about 10% of typical training sets)
