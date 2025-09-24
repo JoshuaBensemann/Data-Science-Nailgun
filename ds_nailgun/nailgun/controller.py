@@ -28,9 +28,9 @@ from sklearn.model_selection import (
 )
 from sklearn.metrics import make_scorer, mean_pinball_loss
 import pandas as pd
-from .dataloader import DataLoader
-from .preprocessing import create_preprocessing_pipeline
-from .model_factory import create_model
+from .loaders.dataloader import DataLoader
+from .loaders.preprocessing import create_preprocessing_pipeline
+from .loaders.model_factory import create_model
 from .consts import (
     HYPERTUNING_METHODS,
     SCORING_NAMES,
@@ -306,7 +306,18 @@ class ExperimentController:
                         # Load the full model config to check for hypertuning
                         full_config = model_config_info["config"]
 
-                        estimator = model
+                        # Create base pipeline: preprocessing + model
+                        base_pipeline = Pipeline(
+                            [
+                                (
+                                    "preprocessing",
+                                    self.preprocessing_pipeline[data_config_name],
+                                ),
+                                ("model", model),
+                            ]
+                        )
+
+                        estimator = base_pipeline
                         if (
                             "hypertuning" in full_config
                             and full_config["hypertuning"]["method"]
@@ -338,11 +349,17 @@ class ExperimentController:
                                 else:
                                     scoring = scoring_name
 
+                            # Modify parameter grid to prefix with "model__" since parameters are nested in pipeline
+                            param_grid = hypertuning_config["parameters"]
+                            prefixed_param_grid = {}
+                            for key, values in param_grid.items():
+                                prefixed_param_grid[f"model__{key}"] = values
+
                             method = hypertuning_config["method"]
                             if method == "grid_search":
                                 estimator = GridSearchCV(
-                                    model,
-                                    param_grid=hypertuning_config["parameters"],
+                                    base_pipeline,
+                                    param_grid=prefixed_param_grid,
                                     cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
                                     scoring=scoring,
                                     verbose=DEFAULT_GRID_SEARCH_VERBOSE,
@@ -356,10 +373,8 @@ class ExperimentController:
                                     "n_iter", 10
                                 )  # Default 10 iterations
                                 estimator = RandomizedSearchCV(
-                                    model,
-                                    param_distributions=hypertuning_config[
-                                        "parameters"
-                                    ],
+                                    base_pipeline,
+                                    param_distributions=prefixed_param_grid,
                                     n_iter=n_iter,
                                     cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
                                     scoring=scoring,
@@ -372,8 +387,8 @@ class ExperimentController:
                                 )
                             elif method == "halving_grid_search":
                                 estimator = HalvingGridSearchCV(
-                                    model,
-                                    param_grid=hypertuning_config["parameters"],
+                                    base_pipeline,
+                                    param_grid=prefixed_param_grid,
                                     cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
                                     scoring=scoring,
                                     verbose=DEFAULT_GRID_SEARCH_VERBOSE,
@@ -402,10 +417,8 @@ class ExperimentController:
                                     "n_candidates", DEFAULT_HALVING_N_CANDIDATES
                                 )  # Default number of candidates
                                 estimator = HalvingRandomSearchCV(
-                                    model,
-                                    param_distributions=hypertuning_config[
-                                        "parameters"
-                                    ],
+                                    base_pipeline,
+                                    param_distributions=prefixed_param_grid,
                                     n_candidates=n_candidates,
                                     cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
                                     scoring=scoring,
@@ -434,16 +447,8 @@ class ExperimentController:
                                 f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__}"
                             )
 
-                        # Create pipeline: preprocessing + estimator
-                        pipeline = Pipeline(
-                            [
-                                (
-                                    "preprocessing",
-                                    self.preprocessing_pipeline[data_config_name],
-                                ),
-                                ("model", estimator),
-                            ]
-                        )
+                        # Use the estimator (which could be the base pipeline or a hypertuning wrapper)
+                        pipeline = estimator
 
                         # Fit the pipeline
                         self.logger.info(f"Fitting pipeline for {experiment_name}...")
@@ -509,7 +514,11 @@ class ExperimentController:
         model_name = experiment_info["model_name"]
 
         # Get the actual model name (handle hypertuning)
-        if hasattr(pipeline.named_steps["model"], "best_estimator_"):
+        if hasattr(pipeline, "best_estimator_"):
+            actual_model_name = type(
+                pipeline.best_estimator_.named_steps["model"]
+            ).__name__
+        elif hasattr(pipeline.named_steps["model"], "best_estimator_"):
             actual_model_name = type(
                 pipeline.named_steps["model"].best_estimator_
             ).__name__
@@ -541,21 +550,26 @@ class ExperimentController:
         pipeline = experiment_info["pipeline"]
 
         # Check if this pipeline used hypertuning
-        if hasattr(pipeline.named_steps["model"], "cv_results_"):
+        # Pipeline could be GridSearchCV directly or contain a GridSearchCV in the model step
+        if hasattr(pipeline, "cv_results_"):
+            cv_results = pipeline.cv_results_
+        elif hasattr(pipeline.named_steps["model"], "cv_results_"):
             cv_results = pipeline.named_steps["model"].cv_results_
+        else:
+            return
 
-            # Save detailed results as CSV
-            results_file = os.path.join(
-                self.results_dir, f"hypertuning_{experiment_name}.csv"
-            )
+        # Save detailed results as CSV
+        results_file = os.path.join(
+            self.results_dir, f"hypertuning_{experiment_name}.csv"
+        )
 
-            # Convert cv_results to DataFrame and save as CSV
-            df_results = pd.DataFrame(cv_results)
-            df_results.to_csv(results_file, index=False)
+        # Convert cv_results to DataFrame and save as CSV
+        df_results = pd.DataFrame(cv_results)
+        df_results.to_csv(results_file, index=False)
 
-            self.logger.info(
-                f"Saved hyperparameter results for {experiment_name} to {results_file}"
-            )
+        self.logger.info(
+            f"Saved hyperparameter results for {experiment_name} to {results_file}"
+        )
 
     def update_experiment_summary(self, experiment_name: str):
         """Update the experiment summary with a newly completed experiment."""
@@ -608,8 +622,10 @@ class ExperimentController:
         pipeline = experiment_info["pipeline"]
         best_score = None
 
-        if hasattr(pipeline.named_steps["model"], "best_score_"):
-            # Convert numpy scalar to regular Python float for human readability
+        # Check if pipeline itself has best_score_ (hypertuning case) or nested model has it
+        if hasattr(pipeline, "best_score_"):
+            best_score = float(pipeline.best_score_)
+        elif hasattr(pipeline.named_steps["model"], "best_score_"):
             best_score = float(pipeline.named_steps["model"].best_score_)
 
         # Check if this experiment is already in the summary
@@ -713,8 +729,10 @@ class ExperimentController:
             pipeline = experiment_info["pipeline"]
             best_score = None
 
-            if hasattr(pipeline.named_steps["model"], "best_score_"):
-                # Convert numpy scalar to regular Python float for human readability
+            # Check if pipeline itself has best_score_ (hypertuning case) or nested model has it
+            if hasattr(pipeline, "best_score_"):
+                best_score = float(pipeline.best_score_)
+            elif hasattr(pipeline.named_steps["model"], "best_score_"):
                 best_score = float(pipeline.named_steps["model"].best_score_)
 
             summary["experiments_run"].append(

@@ -350,7 +350,10 @@ class PostExperimentAnalyzer:
         # Try to show some model parameters
         try:
             model = self.models[exp_dir][model_key]
-            if hasattr(model.named_steps["model"], "best_params_"):
+            # Check if model itself has best_params_ (hypertuning case) or nested model has it
+            if hasattr(model, "best_params_"):
+                print(f"   Best Parameters: {model.best_params_}")
+            elif hasattr(model.named_steps["model"], "best_params_"):
                 print(f"   Best Parameters: {model.named_steps['model'].best_params_}")
         except Exception:
             pass
