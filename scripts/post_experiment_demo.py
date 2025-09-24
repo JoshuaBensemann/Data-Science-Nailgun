@@ -2,8 +2,8 @@
 """
 Demo script for post-experiment analysis using the Titanic dataset.
 
-This script demonstrates how to use the PostExperimentAnalyzer class
-to analyze multiple experiments and generate predictions.
+This script demonstrates how to use the PostExperimentController class
+to analyze experiments and generate predictions.
 
 Usage:
     # For installed package:
@@ -21,8 +21,8 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-# Import the analyzer class
-from ds_nailgun.nailgun.post_experiment import PostExperimentAnalyzer
+# Import the controller class
+from ds_nailgun.nailgun.post_experiment_controller import PostExperimentController
 
 
 def main():
@@ -31,7 +31,7 @@ def main():
         description="Demo script for post-experiment analysis with Titanic data"
     )
     parser.add_argument(
-        "folder_dir",
+        "folder_path",
         help="Path to folder containing experiments or single experiment directory",
     )
     parser.add_argument(
@@ -42,42 +42,25 @@ def main():
 
     args = parser.parse_args()
 
-    folder = Path(args.folder_dir)
+    folder = Path(args.folder_path)
     if not folder.exists():
         print(f"❌ Folder does not exist: {folder}")
         sys.exit(1)
 
-    # Determine experiment directories
-    experiment_dirs = []
-    if (folder / "experiment_summary.yaml").exists():
-        # Single experiment directory
-        experiment_dirs = [str(folder)]
-        print(f"🔍 Analyzing single experiment: {folder.name}")
-    else:
-        # Check for multiple experiments
-        for subdir in folder.iterdir():
-            if subdir.is_dir() and (subdir / "experiment_summary.yaml").exists():
-                experiment_dirs.append(str(subdir))
-        if not experiment_dirs:
-            print(f"❌ No experiment directories found in {folder}")
-            print("   Expected directories with 'experiment_summary.yaml' files")
-            sys.exit(1)
-        print(f"🔍 Analyzing {len(experiment_dirs)} experiments in {folder}")
-
     try:
-        # Create analyzer instance
-        analyzer = PostExperimentAnalyzer(experiment_dirs, force=args.force)
+        # Create controller instance - it automatically discovers experiments
+        controller = PostExperimentController(folder, force=args.force)
 
         # Run the analysis
-        analyzer.run_analysis()
+        controller.run_analysis()
 
         print("\n✅ Demo completed successfully!")
-        print("   The PostExperimentAnalyzer class can be imported and used as:")
+        print("   The PostExperimentController class can be imported and used as:")
         print(
-            "   from ds_nailgun.nailgun.post_experiment import PostExperimentAnalyzer"
+            "   from ds_nailgun.nailgun.post_experiment_controller import PostExperimentController"
         )
-        print("   analyzer = PostExperimentAnalyzer(['path/to/exp1', 'path/to/exp2'])")
-        print("   analyzer.run_analysis()")
+        print("   controller = PostExperimentController('path/to/experiments')")
+        print("   controller.run_analysis()")
 
     except Exception as e:
         print(f"❌ Demo failed: {e}")
