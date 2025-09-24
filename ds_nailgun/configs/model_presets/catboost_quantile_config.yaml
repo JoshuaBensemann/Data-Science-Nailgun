@@ -10,13 +10,13 @@ model:
     subsample: 0.8  # Sample rate for bagging
     colsample_bylevel: 0.8  # Feature fraction per level
     random_state: 1986
-    verbose: 2  # Verbose mode
+    verbose: 0  # Silent mode
     # Quantile regression specific parameters
     loss_function: 'Quantile:alpha=0.9'  # Quantile loss with 0.9 quantile level
 
-# Optional hyperparameter tuning configuration
 hypertuning:
   method: "halving_random_search"  # Successive halving with random search for efficient large-scale optimization
+  verbose: 2  # Verbose search progress
   n_candidates: 50  # Extensive number of candidates for thorough search
   parameters:
     depth: [4, 6, 8, 10, 12]  # Extended depth range
@@ -26,7 +26,7 @@ hypertuning:
     l2_leaf_reg: [0.1, 1, 3, 5, 10, 20]  # Extended L2 regularization range
     min_data_in_leaf: [1, 5, 10, 20, 50]  # Extended minimum samples per leaf
     border_count: [32, 64, 128, 254]  # Border count for categorical features
-    verbose: [2]  # Verbose during tuning
+    verbose: [0]  # Silent models during tuning
   cv: 3  # Cross-validation folds
   scoring:
     name: 'pinball_loss'
