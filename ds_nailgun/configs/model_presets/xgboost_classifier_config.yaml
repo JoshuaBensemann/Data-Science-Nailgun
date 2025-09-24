@@ -22,9 +22,6 @@ hypertuning:
     subsample: [0.7, 0.8, 1.0]
     colsample_bytree: [0.7, 0.8, 1.0]
     gamma: [0, 0.1]
-    min_child_weight: [1, 5]
-    reg_alpha: [0, 0.01]
-    reg_lambda: [0.1, 1.0]
   cv: 3  # Cross-validation folds
   scoring:
     name: 'accuracy'

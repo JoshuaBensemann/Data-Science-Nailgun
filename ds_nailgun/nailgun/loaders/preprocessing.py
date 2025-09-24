@@ -27,7 +27,7 @@ import pandas as pd
 import logging
 from tqdm import tqdm
 import joblib
-from .consts import (
+from ..consts import (
     SCORE_FUNCS,
     DEFAULT_K_BEST,
     DEFAULT_VARIANCE_THRESHOLD,

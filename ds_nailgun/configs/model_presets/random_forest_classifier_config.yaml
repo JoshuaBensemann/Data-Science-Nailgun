@@ -21,7 +21,6 @@ hypertuning:
     min_samples_leaf: [1, 2, 4]
     max_features: ['sqrt', 'log2', None]
     criterion: ['gini', 'entropy']
-    bootstrap: [True, False]
   cv: 3  # Cross-validation folds
   scoring:
     name: 'accuracy'

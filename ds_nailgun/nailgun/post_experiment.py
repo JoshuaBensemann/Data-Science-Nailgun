@@ -137,7 +137,7 @@ class PostExperimentAnalyzer:
     def load_data(self):
         """Load the original training and test data."""
         # Import here to avoid circular imports
-        from .dataloader import DataLoader
+        from .loaders.dataloader import DataLoader
 
         # Load data for each data config in each experiment
         for exp_dir in tqdm(
