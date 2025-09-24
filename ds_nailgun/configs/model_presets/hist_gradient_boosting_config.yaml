@@ -23,8 +23,7 @@ model:
 # Optional hyperparameter tuning configuration
 hypertuning:
   method: "halving_random_search"  # Successive halving with random search for efficient large-scale optimization
-  n_candidates: 90  # Number of candidate parameter combinations to evaluate initially
-  n_iter: 20  # Number of parameter combinations to try
+  n_candidates: 200  # Number of candidate parameter combinations to evaluate initially
   parameters:
     max_depth: [3, 4, 5, 6, 7, 8, 9, 10, None]
     learning_rate: [0.01, 0.05, 0.1, 0.15, 0.2, 0.3]
@@ -39,4 +38,4 @@ hypertuning:
   factor: 3  # Halving factor - eliminate 2/3 of candidates each round
   resource: 'n_samples'  # Resource parameter to optimize (number of training samples)
   max_resources: 'auto'  # Use all available training samples
-  min_resources: 50000  # Minimum samples to start with (about 10% of typical training sets)
+  min_resources: 10000  # Minimum samples to start with (about 10% of typical training sets)
