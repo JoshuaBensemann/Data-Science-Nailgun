@@ -14,23 +14,15 @@ model:
 
 # Optional hyperparameter tuning configuration
 hypertuning:
-  method: "halving_random_search"  # Successive halving with random search for efficient large-scale optimization
-  n_candidates: 80  # Number of candidate parameter combinations to evaluate initially
+  method: "grid_search"  # Use basic grid search for hyperparameter tuning
   parameters:
-    max_depth: [None, 5, 10, 15, 20, 25, 30, 40]
-    min_samples_split: [2, 3, 5, 7, 10, 15]
-    min_samples_leaf: [1, 2, 3, 4, 5, 8, 10]
-    max_features: ['sqrt', 'log2', None, 0.3, 0.5, 0.7, 0.9]  # Feature selection
-    criterion: ['gini', 'entropy', 'log_loss']  # Split criterion
-    min_impurity_decrease: [0.0, 0.0001, 0.001, 0.01]  # Minimum impurity decrease
-    bootstrap: [True, False]  # Whether bootstrap samples are used
-    oob_score: [False]  # Out-of-bag samples (only when bootstrap=True)
-    verbose: [0]  # Silent during tuning
+    max_depth: [None, 5, 10, 20]
+    min_samples_split: [2, 5, 10]
+    min_samples_leaf: [1, 2, 4]
+    max_features: ['sqrt', 'log2', None]
+    criterion: ['gini', 'entropy']
+    bootstrap: [True, False]
   cv: 3  # Cross-validation folds
   scoring:
     name: 'accuracy'
-  n_jobs: 1  # Halving search doesn't parallelize well
-  factor: 3  # Halving factor - eliminate 2/3 of candidates each round
-  resource: 'n_estimators'  # Resource parameter to optimize (number of trees)
-  max_resources: 1000  # Maximum resources (n_estimators) to use
-  min_resources: 25  # Minimum resources to start with
+  n_jobs: -1  # Use all available CPU cores
