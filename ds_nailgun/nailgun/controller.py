@@ -283,9 +283,17 @@ class ExperimentController:
                 data_config = data_config_info["config"]
                 train_data = self.data[data_config_name]["train"]
 
-                X_train = train_data.drop(
-                    columns=[data_config["data"]["target"]["column"]]
-                )
+                columns_to_drop = [data_config["data"]["target"]["column"]]
+                # Also drop ID column if it exists in the config
+                if "id" in data_config["data"]:
+                    id_column = data_config["data"]["id"]["column"]
+                    if id_column in train_data.columns:
+                        columns_to_drop.append(id_column)
+                        self.logger.info(
+                            f"Dropping ID column '{id_column}' from training data"
+                        )
+
+                X_train = train_data.drop(columns=columns_to_drop)
                 y_train = train_data[data_config["data"]["target"]["column"]]
 
                 for model_idx, (model, model_config_info) in enumerate(
