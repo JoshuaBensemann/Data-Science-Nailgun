@@ -9,7 +9,8 @@ dependencies = [
     "scikit-learn",
     "xgboost",
     "pandas",
-    "tqdm"
+    "tqdm",
+    "optuna"
 ]
 
 [build-system]

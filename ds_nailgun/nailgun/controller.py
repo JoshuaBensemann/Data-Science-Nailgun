@@ -16,6 +16,7 @@ import pandas as pd
 from .loaders.dataloader import DataLoader
 from .loaders.preprocessing import create_preprocessing_pipeline
 from .loaders.model_factory import create_model
+from .optuna_search import OptunaSearchCV
 from .consts import (
     HYPERTUNING_METHODS,
     SCORING_NAMES,
@@ -38,6 +39,11 @@ from .consts import (
     DEFAULT_HALVING_RESOURCE,
     DEFAULT_HALVING_MAX_RESOURCES,
     DEFAULT_HALVING_N_CANDIDATES,
+    DEFAULT_OPTUNA_N_TRIALS,
+    DEFAULT_OPTUNA_TIMEOUT,
+    DEFAULT_OPTUNA_N_JOBS,
+    DEFAULT_OPTUNA_DIRECTION,
+    DEFAULT_OPTUNA_STUDY_NAME,
 )
 from tqdm import tqdm
 
@@ -350,6 +356,7 @@ class ExperimentController:
                                 RandomizedSearchCV,
                                 HalvingGridSearchCV,
                                 HalvingRandomSearchCV,
+                                OptunaSearchCV,
                             ),
                         ):
                             try:
@@ -637,6 +644,42 @@ class ExperimentController:
                 )
                 self.logger.info(
                     f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Halving Random Search ({n_candidates} candidates)"
+                )
+            elif method == "optuna":
+                n_trials = hypertuning_config.get(
+                    "n_trials", DEFAULT_OPTUNA_N_TRIALS
+                )  # Default number of trials
+                timeout = hypertuning_config.get(
+                    "timeout", DEFAULT_OPTUNA_TIMEOUT
+                )  # Default timeout
+                direction = hypertuning_config.get(
+                    "direction", DEFAULT_OPTUNA_DIRECTION
+                )  # Default direction
+                study_name = hypertuning_config.get(
+                    "study_name", DEFAULT_OPTUNA_STUDY_NAME
+                )  # Default study name
+                n_jobs = hypertuning_config.get(
+                    "n_jobs", DEFAULT_OPTUNA_N_JOBS
+                )  # Default number of jobs
+
+                # For Optuna, we need to transform the parameter distribution
+                # from lists to dictionaries with parameter specifications
+                # This allows Optuna to know what type each parameter should be
+                estimator = OptunaSearchCV(
+                    base_pipeline,
+                    param_distributions=prefixed_param_grid,
+                    n_trials=n_trials,
+                    cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
+                    scoring=scoring,
+                    direction=direction,
+                    timeout=timeout,
+                    n_jobs=n_jobs,
+                    study_name=study_name,
+                    verbose=DEFAULT_GRID_SEARCH_VERBOSE,
+                    random_state=42,  # For reproducibility
+                )
+                self.logger.info(
+                    f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Optuna ({n_trials} trials)"
                 )
             self.logger.info(
                 f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__}"

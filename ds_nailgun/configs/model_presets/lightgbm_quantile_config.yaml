@@ -23,17 +23,18 @@ model:
     eval_metric: 'quantile'
 
 hypertuning:
-  method: "halving_random_search"
-  n_candidates: 25  # Reasonable candidate count
+  method: "optuna"
+  n_trials: 25  # Number of trials for Optuna
+  direction: "minimize"  # For pinball loss, lower is better
   parameters:
-    max_depth: [6, 10, -1]  # Depth range including unlimited
-    learning_rate: [0.01, 0.1, 0.2]  # Key learning rates
-    num_leaves: [31, 127]  # Constrained by max_depth (31 for depth 6, 127 for deeper)
-    subsample: [0.8, 1.0]  # Reasonable subsample
-    feature_fraction: [0.8, 1.0]  # Feature fraction options
-    min_child_samples: [5, 20]  # Minimum child samples
-    lambda_l1: [0.0, 0.1]  # L1 regularization options
-    lambda_l2: [0.0, 1.0]  # L2 regularization options
+    max_depth: {"type": "categorical", "choices": [6, 10, -1]}  # -1 means no limit
+    learning_rate: {"type": "float", "low": 0.01, "high": 0.3, "log": true}  # Log scale for learning rate
+    num_leaves: {"type": "int", "low": 31, "high": 255}  # From default LightGBM settings
+    subsample: {"type": "float", "low": 0.5, "high": 1.0}  # Subsample ratio
+    feature_fraction: {"type": "float", "low": 0.5, "high": 1.0}  # Feature fraction
+    min_child_samples: {"type": "int", "low": 5, "high": 50}  # Min samples per leaf
+    lambda_l1: {"type": "float", "low": 0.0, "high": 1.0}  # L1 regularization
+    lambda_l2: {"type": "float", "low": 0.0, "high": 1.0}  # L2 regularization
     # verbose parameter removed - not needed for tuning
   cv: 3
   scoring:

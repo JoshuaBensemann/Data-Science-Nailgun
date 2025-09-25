@@ -5,7 +5,7 @@ An advanced package for streamlined data science experimentation with support fo
 ## Features
 
 - **Multiple Data Configurations**: Support for different feature sets and preprocessing strategies
-- **Advanced Hyperparameter Tuning**: Halving search methods (HalvingGridSearchCV, HalvingRandomSearchCV) for efficient large-scale optimization
+- **Advanced Hyperparameter Tuning**: Supports multiple optimization strategies including Optuna for Bayesian optimization and Halving search methods for efficient large-scale hyperparameter tuning
 - **Preprocessing Pipeline Caching**: Joblib-based caching to avoid redundant computations and improve performance
 - **Experiment Organization**: Timestamped experiment directories with comprehensive result storage
 - **Post-Experiment Analysis**: Tools for model evaluation and prediction generation across multiple experiments
@@ -245,9 +245,31 @@ The demo script automatically:
 
 ## Advanced Usage
 
-### Hyperparameter Tuning with Halving Search
+### Hyperparameter Tuning
 
-The system supports efficient halving search methods that progressively eliminate poorly performing parameter combinations:
+#### Optuna Bayesian Optimization
+
+The system supports Optuna for advanced Bayesian hyperparameter optimization:
+
+```yaml
+hypertuning:
+  method: "optuna"  # Use Optuna for Bayesian optimization
+  n_trials: 30  # Number of trials to run
+  direction: "minimize"  # For loss metrics like MSE (use "maximize" for metrics like accuracy)
+  parameters:
+    max_depth: {"type": "int", "low": 3, "high": 10}  # Integer parameter
+    learning_rate: {"type": "float", "low": 0.01, "high": 0.3, "log": true}  # Log-scaled float
+    n_estimators: {"type": "int", "low": 50, "high": 500, "step": 50}  # Integer with step size
+    subsample: {"type": "float", "low": 0.5, "high": 1.0}  # Float parameter
+    max_features: {"type": "categorical", "choices": ["sqrt", "log2", null]}  # Categorical parameter
+  cv: 3  # Cross-validation folds
+  scoring:
+    name: 'accuracy'  # Or other metric
+```
+
+#### Halving Search Methods
+
+The system also supports efficient halving search methods that progressively eliminate poorly performing parameter combinations:
 
 ```yaml
 hypertuning:

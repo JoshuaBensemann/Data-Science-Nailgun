@@ -23,18 +23,19 @@ model:
     eval_metric: 'quantile'
 
 hypertuning:
-  method: "halving_random_search"
-  n_candidates: 30  # Reduced from 50
+  method: "optuna"
+  n_trials: 30  # Number of trials for Optuna
+  direction: "minimize"  # For pinball loss, lower is better
   parameters:
-    max_depth: [6, 10, -1]  # Limited depth options, -1 for unlimited
-    num_leaves: [31, 127]  # Constrained by max_depth (2^max_depth theoretical max)
-    learning_rate: [0.01, 0.1, 0.2]  # Key learning rates
-    n_estimators: [100, 300]  # Matching estimator counts
-    subsample: [0.8, 1.0]  # Reasonable subsample
-    feature_fraction: [0.8, 1.0]  # Reasonable feature fraction
-    min_child_samples: [5, 20]  # Reasonable child sample counts
-    lambda_l1: [0.0, 0.1]  # L1 regularization
-    lambda_l2: [0.0, 1.0]  # L2 regularization
+    max_depth: {"type": "categorical", "choices": [6, 10, -1]}  # -1 means no limit
+    num_leaves: {"type": "int", "low": 31, "high": 255}  # From default LightGBM settings
+    learning_rate: {"type": "float", "low": 0.01, "high": 0.3, "log": true}  # Log scale for learning rate
+    n_estimators: {"type": "int", "low": 100, "high": 1000, "step": 100}  # From 100 to 1000 in steps of 100
+    subsample: {"type": "float", "low": 0.5, "high": 1.0}  # Subsample ratio
+    feature_fraction: {"type": "float", "low": 0.5, "high": 1.0}  # Feature fraction
+    min_child_samples: {"type": "int", "low": 5, "high": 50}  # Min samples per leaf
+    lambda_l1: {"type": "float", "low": 0.0, "high": 1.0}  # L1 regularization
+    lambda_l2: {"type": "float", "low": 0.0, "high": 1.0}  # L2 regularization
   cv: 3
   scoring:
     name: 'pinball_loss'

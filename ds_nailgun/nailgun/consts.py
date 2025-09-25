@@ -52,6 +52,7 @@ HYPERTUNING_METHODS = [
     "random_search",
     "halving_grid_search",
     "halving_random_search",
+    "optuna",
 ]
 SCORING_NAMES = ["pinball_loss"]
 SAVE_FORMATS = ["joblib", "pickle"]
@@ -63,6 +64,13 @@ DEFAULT_HALVING_MAX_RESOURCES = "auto"
 DEFAULT_HALVING_MIN_RESOURCES = "exhaust"
 DEFAULT_HALVING_N_JOBS = 1
 DEFAULT_HALVING_N_CANDIDATES = 50
+
+# Optuna search defaults
+DEFAULT_OPTUNA_N_TRIALS = 50
+DEFAULT_OPTUNA_TIMEOUT = None  # No timeout by default
+DEFAULT_OPTUNA_N_JOBS = 1
+DEFAULT_OPTUNA_DIRECTION = "maximize"  # For accuracy, roc_auc, etc.
+DEFAULT_OPTUNA_STUDY_NAME = "optuna_hyperparameter_search"
 
 # Directory names
 DEFAULT_BASE_DIR = "experiments"
