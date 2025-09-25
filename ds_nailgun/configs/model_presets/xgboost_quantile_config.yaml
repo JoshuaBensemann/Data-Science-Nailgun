@@ -20,23 +20,22 @@ model:
     quantile_alpha: 0.9  # Quantile level (0.9 = 90th percentile)
 
 hypertuning:
-  method: "halving_random_search"  # Successive halving with random search for efficient large-scale optimization
-  verbose: 2  # Verbose search progress
-  n_candidates: 50  # Extensive number of candidates for thorough search
+  method: "halving_random_search"
+  n_candidates: 25  # Reasonable candidate count
   parameters:
-    max_depth: [3, 4, 6, 8, 10, 12]  # Extended depth range
-    learning_rate: [0.005, 0.01, 0.05, 0.1, 0.2, 0.3]  # Broader learning rate range
-    subsample: [0.6, 0.7, 0.8, 0.9, 1.0]  # Extended subsample range
-    colsample_bytree: [0.6, 0.7, 0.8, 0.9, 1.0]  # Extended feature fraction range
-    gamma: [0, 0.1, 0.2, 0.5, 1.0]  # Extended minimum loss reduction
-    min_child_weight: [1, 3, 5, 10, 20]  # Extended minimum child weight
-    reg_alpha: [0, 0.001, 0.01, 0.1, 1.0, 10.0]  # Extended L1 regularization
-    reg_lambda: [0.1, 0.5, 1.0, 1.5, 2.0, 5.0]  # Extended L2 regularization
-    verbosity: [0]  # Silent models during tuning
-  cv: 3  # Cross-validation folds
+    max_depth: [3, 6, 9]  # Focused depth range
+    learning_rate: [0.01, 0.1, 0.2]  # Key learning rates
+    n_estimators: [100, 300]  # Matching estimator counts
+    subsample: [0.8, 1.0]  # Reasonable subsample
+    colsample_bytree: [0.8, 1.0]  # Feature fraction options
+    gamma: [0, 0.1]  # Minimum loss reduction
+    min_child_weight: [1, 5]  # Minimum child weight
+    reg_alpha: [0, 0.1]  # L1 regularization options
+    # verbosity parameter removed - not needed for tuning
+  cv: 3
   scoring:
     name: 'pinball_loss'
-    alpha: 0.9  # Quantile level for pinball loss scoring
-  n_jobs: 1  # Halving search doesn't parallelize well
-  factor: 3  # Halving factor - eliminate 2/3 of candidates each round
-  resource: 'n_samples'  # Resource parameter to optimize (number of training samples)
+    alpha: 0.9
+  n_jobs: 1
+  factor: 3
+  resource: 'n_samples'

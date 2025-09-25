@@ -23,24 +23,22 @@ model:
     eval_metric: 'quantile'
 
 hypertuning:
-  method: "halving_random_search"  # Successive halving with random search for efficient large-scale optimization
-  verbose: 2  # Verbose search progress
-  n_candidates: 50  # Extensive number of candidates for thorough search
+  method: "halving_random_search"
+  n_candidates: 25  # Reasonable candidate count
   parameters:
-    max_depth: [6, 8, 10, 12, 15, -1]  # Extended depth range including unlimited
-    learning_rate: [0.005, 0.01, 0.05, 0.1, 0.2, 0.3]  # Broader learning rate range
-    subsample: [0.6, 0.7, 0.8, 0.9, 1.0]  # Extended subsample range
-    feature_fraction: [0.6, 0.7, 0.8, 0.9, 1.0]  # Extended feature fraction range
-    num_leaves: [20, 50, 100, 150, 200, 250]  # Extended leaf count range
-    min_child_samples: [1, 5, 10, 20, 30, 50]  # Reduced minimum child samples to allow more splits
-    min_split_gain: [0.0, 0.0001, 0.001, 0.01]  # Much lower minimum split gain to prevent -inf warnings
-    lambda_l1: [0.0, 0.001, 0.01, 0.1, 1.0]  # L1 regularization
-    lambda_l2: [0.0, 0.001, 0.01, 0.1, 1.0]  # L2 regularization
-    verbose: [-1]  # Completely silent models during tuning to suppress warnings
-  cv: 3  # Cross-validation folds
+    max_depth: [6, 10, -1]  # Depth range including unlimited
+    learning_rate: [0.01, 0.1, 0.2]  # Key learning rates
+    num_leaves: [31, 127]  # Constrained by max_depth (31 for depth 6, 127 for deeper)
+    subsample: [0.8, 1.0]  # Reasonable subsample
+    feature_fraction: [0.8, 1.0]  # Feature fraction options
+    min_child_samples: [5, 20]  # Minimum child samples
+    lambda_l1: [0.0, 0.1]  # L1 regularization options
+    lambda_l2: [0.0, 1.0]  # L2 regularization options
+    # verbose parameter removed - not needed for tuning
+  cv: 3
   scoring:
     name: 'pinball_loss'
-    alpha: 0.9  # Quantile level for pinball loss scoring
-  n_jobs: 1  # Halving search doesn't parallelize well
-  factor: 3  # Halving factor - eliminate 2/3 of candidates each round
-  resource: 'n_samples'  # Resource parameter to optimize (number of training samples)
+    alpha: 0.9
+  n_jobs: 1
+  factor: 3
+  resource: 'n_samples'

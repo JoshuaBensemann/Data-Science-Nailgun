@@ -1,0 +1,18 @@
+data:
+  config_paths:
+  - /home/joshua_bensemann/work/critical-compass-backend/app/experimental/analytics/notebooks/wishlists_followers_reviews/ng_configs/reviews_data_config.yaml
+experiment:
+  description: Predicting 50th percentile values for reviews data using multiple quantile
+    regression approaches
+  name: Reviews Quantile Regression
+  random_seed: 1986
+logging:
+  file: logs/reviews_quantile_experiment_50p.log
+  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  level: INFO
+models:
+  config_paths:
+  - /home/joshua_bensemann/personal/Data-Science-Nailgun/ds_nailgun/configs/model_presets/extra_trees_quantile_0.5_config.yaml
+output:
+  base_directory: experiments/
+  save_format: joblib

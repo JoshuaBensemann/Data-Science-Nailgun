@@ -23,8 +23,8 @@ hypertuning:
     min_samples_split: [2, 5, 10, 15, 20]  # Extended minimum samples to split
     min_samples_leaf: [1, 2, 4, 8, 10]  # Extended minimum samples per leaf
     max_features: ['sqrt', 'log2', None, 0.5, 0.7, 0.9]  # Extended feature selection
-    bootstrap: [True, False]  # Bootstrap options
-    max_samples: [0.6, 0.8, 1.0]  # Bootstrap sample fractions
+    bootstrap: [True]  # Bootstrap enabled for better ensemble diversity
+    max_samples: [0.6, 0.8, 1.0]  # Bootstrap sample fractions - controls tree diversity
     verbose: [0]  # Silent models during tuning
   cv: 3  # Cross-validation folds
   scoring:

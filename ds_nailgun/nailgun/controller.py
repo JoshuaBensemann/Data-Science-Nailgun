@@ -299,131 +299,13 @@ class ExperimentController:
                             ]
                         )
 
-                        estimator = base_pipeline
-                        if (
-                            "hypertuning" in full_config
-                            and full_config["hypertuning"]["method"]
-                            in HYPERTUNING_METHODS
-                        ):
-                            hypertuning_config = full_config["hypertuning"]
-
-                            # Handle special scoring metrics
-                            scoring_config = hypertuning_config.get(
-                                "scoring", {"name": DEFAULT_SCORING_NAME}
-                            )
-                            if isinstance(scoring_config, str):
-                                # Backward compatibility: if scoring is still a string
-                                scoring = scoring_config
-                            else:
-                                # New format: scoring is a dict with name and optional parameters
-                                scoring_name = scoring_config.get(
-                                    "name", DEFAULT_SCORING_NAME
-                                )
-                                if scoring_name in SCORING_NAMES:
-                                    alpha = scoring_config.get(
-                                        "alpha", DEFAULT_PINBALL_ALPHA
-                                    )  # Default to median if not specified
-                                    scoring = make_scorer(
-                                        mean_pinball_loss,
-                                        alpha=alpha,
-                                        greater_is_better=False,
-                                    )
-                                else:
-                                    scoring = scoring_name
-
-                            # Modify parameter grid to prefix with "model__" since parameters are nested in pipeline
-                            param_grid = hypertuning_config["parameters"]
-                            prefixed_param_grid = {}
-                            for key, values in param_grid.items():
-                                prefixed_param_grid[f"model__{key}"] = values
-
-                            method = hypertuning_config["method"]
-                            if method == "grid_search":
-                                estimator = GridSearchCV(
-                                    base_pipeline,
-                                    param_grid=prefixed_param_grid,
-                                    cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
-                                    scoring=scoring,
-                                    verbose=DEFAULT_GRID_SEARCH_VERBOSE,
-                                    n_jobs=hypertuning_config.get("n_jobs", -1),
-                                )
-                                self.logger.info(
-                                    f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Grid Search"
-                                )
-                            elif method == "random_search":
-                                n_iter = hypertuning_config.get(
-                                    "n_iter", 10
-                                )  # Default 10 iterations
-                                estimator = RandomizedSearchCV(
-                                    base_pipeline,
-                                    param_distributions=prefixed_param_grid,
-                                    n_iter=n_iter,
-                                    cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
-                                    scoring=scoring,
-                                    verbose=DEFAULT_GRID_SEARCH_VERBOSE,
-                                    n_jobs=hypertuning_config.get("n_jobs", -1),
-                                    random_state=42,  # For reproducibility
-                                )
-                                self.logger.info(
-                                    f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Random Search ({n_iter} iterations)"
-                                )
-                            elif method == "halving_grid_search":
-                                estimator = HalvingGridSearchCV(
-                                    base_pipeline,
-                                    param_grid=prefixed_param_grid,
-                                    cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
-                                    scoring=scoring,
-                                    verbose=DEFAULT_GRID_SEARCH_VERBOSE,
-                                    n_jobs=1,  # Halving doesn't support parallel well - force single job
-                                    random_state=42,  # For reproducibility
-                                    factor=hypertuning_config.get(
-                                        "factor", 3
-                                    ),  # Default halving factor for early stopping
-                                    resource=hypertuning_config.get(
-                                        "resource", DEFAULT_HALVING_RESOURCE
-                                    ),  # Resource to allocate
-                                    max_resources=hypertuning_config.get(
-                                        "max_resources", DEFAULT_HALVING_MAX_RESOURCES
-                                    ),  # Max resources parameter
-                                    min_resources=hypertuning_config.get(
-                                        "min_resources", "exhaust"
-                                    ),  # Min resources parameter - allow early stopping
-                                )
-                                self.logger.info(
-                                    f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Halving Grid Search"
-                                )
-                            elif method == "halving_random_search":
-                                n_candidates = hypertuning_config.get(
-                                    "n_candidates", DEFAULT_HALVING_N_CANDIDATES
-                                )  # Default number of candidates
-                                estimator = HalvingRandomSearchCV(
-                                    base_pipeline,
-                                    param_distributions=prefixed_param_grid,
-                                    n_candidates=n_candidates,
-                                    cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
-                                    scoring=scoring,
-                                    verbose=DEFAULT_GRID_SEARCH_VERBOSE,
-                                    n_jobs=1,  # Halving doesn't support parallel well - force single job
-                                    random_state=42,  # For reproducibility
-                                    factor=hypertuning_config.get(
-                                        "factor", 3
-                                    ),  # Default halving factor for early stopping
-                                    resource=hypertuning_config.get(
-                                        "resource", DEFAULT_HALVING_RESOURCE
-                                    ),  # Resource to allocate
-                                    max_resources=hypertuning_config.get(
-                                        "max_resources", DEFAULT_HALVING_MAX_RESOURCES
-                                    ),  # Max resources parameter
-                                    min_resources=hypertuning_config.get(
-                                        "min_resources", "exhaust"
-                                    ),  # Min resources parameter - allow early stopping
-                                )
-                                self.logger.info(
-                                    f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Halving Random Search ({n_candidates} candidates)"
-                                )
-                            self.logger.info(
-                                f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__}"
-                            )
+                        estimator = self._create_estimator_with_hypertuning(
+                            base_pipeline,
+                            full_config,
+                            experiment_count,
+                            data_config_name,
+                            model,
+                        )
 
                         # Use the estimator (which could be the base pipeline or a hypertuning wrapper)
                         pipeline = estimator
@@ -441,203 +323,24 @@ class ExperimentController:
                         }
 
                         # Calculate validation score if validation data is available
-                        validation_score = None
-                        validation_metric = None
-                        if self.data[data_config_name]["validation"] is not None:
-                            try:
-                                # Get validation data
-                                validation_data = self.data[data_config_name][
-                                    "validation"
-                                ]
-                                X_val = validation_data.drop(columns=columns_to_drop)
-                                y_val = validation_data[
-                                    data_config["data"]["target"]["column"]
-                                ]
+                        validation_score, validation_metric = (
+                            self._calculate_validation_score(
+                                experiment_name,
+                                pipeline,
+                                data_config_name,
+                                data_config,
+                                columns_to_drop,
+                                full_config,
+                            )
+                        )
 
-                                # Find the metric that was used for hypertuning
-                                # We'll use the same metric type when possible
-                                unique_target_values = len(set(y_val))
-                                is_classification = unique_target_values < 10
-
-                                # For hyperparameter search, we extract the scoring info
-                                # from the hypertuning_config directly to avoid attribute errors
-                                if "hypertuning" in full_config:
-                                    scoring_config = full_config["hypertuning"].get(
-                                        "scoring", {"name": DEFAULT_SCORING_NAME}
-                                    )
-                                    if isinstance(scoring_config, str):
-                                        validation_metric = scoring_config
-                                    elif isinstance(scoring_config, dict):
-                                        validation_metric = scoring_config.get(
-                                            "name", DEFAULT_SCORING_NAME
-                                        )
-                                else:
-                                    # Default metrics based on problem type
-                                    validation_metric = (
-                                        "accuracy" if is_classification else "r2"
-                                    )
-
-                                # Make predictions using the best estimator with proper preprocessing
-                                # Handle different pipeline types (base pipeline vs hyperparameter search wrappers)
-                                if hasattr(pipeline, "best_estimator_"):
-                                    # For hyperparameter search objects, get the best estimator (the actual Pipeline)
-                                    best_pipeline = pipeline.best_estimator_
-                                else:
-                                    # For base pipelines
-                                    best_pipeline = pipeline
-
-                                # Apply preprocessing transformation using the fitted preprocessing step
-                                preprocessing_step = best_pipeline.named_steps.get(
-                                    "preprocessing"
-                                )
-                                if preprocessing_step is not None:
-                                    X_val_processed = preprocessing_step.transform(
-                                        X_val
-                                    )
-                                else:
-                                    # Fallback if no preprocessing step found
-                                    X_val_processed = X_val
-
-                                # Make predictions using the processed validation data
-                                y_pred = best_pipeline.named_steps["model"].predict(
-                                    X_val_processed
-                                )
-
-                                # Check for NaN values in predictions and validation targets
-                                y_pred_nan_mask = pd.isna(y_pred)
-                                y_val_nan_mask = pd.isna(y_val)
-
-                                # Combine masks to filter out any rows with NaN in either predictions or targets
-                                valid_mask = ~(y_pred_nan_mask | y_val_nan_mask)
-
-                                if not valid_mask.any():
-                                    self.logger.warning(
-                                        "  All predictions or validation targets are NaN - skipping validation score"
-                                    )
-                                    continue
-
-                                # Filter out NaN values
-                                y_pred_clean = (
-                                    y_pred[valid_mask]
-                                    if hasattr(y_pred, "__getitem__")
-                                    else y_pred
-                                )
-                                y_val_clean = (
-                                    y_val[valid_mask]
-                                    if hasattr(y_val, "__getitem__")
-                                    else y_val
-                                )
-
-                                # Additional check for numpy arrays
-                                if hasattr(y_pred_clean, "values"):
-                                    y_pred_clean = y_pred_clean.values
-                                if hasattr(y_val_clean, "values"):
-                                    y_val_clean = y_val_clean.values
-
-                                nan_count = (~valid_mask).sum()
-                                if nan_count > 0:
-                                    self.logger.warning(
-                                        f"  Filtered out {nan_count} NaN values from validation data"
-                                    )
-
-                                # Calculate score based on the metric
-                                if validation_metric == "accuracy" or (
-                                    validation_metric == DEFAULT_SCORING_NAME
-                                    and is_classification
-                                ):
-                                    from sklearn.metrics import accuracy_score
-
-                                    validation_score = accuracy_score(
-                                        y_val_clean, y_pred_clean
-                                    )
-                                    self.logger.info(
-                                        f"  Validation accuracy: {validation_score:.4f}"
-                                    )
-                                elif (
-                                    validation_metric == "r2"
-                                    or validation_metric == "r2_score"
-                                ):
-                                    from sklearn.metrics import r2_score
-
-                                    validation_score = r2_score(
-                                        y_val_clean, y_pred_clean
-                                    )
-                                    self.logger.info(
-                                        f"  Validation R²: {validation_score:.4f}"
-                                    )
-                                elif validation_metric == "neg_mean_squared_error":
-                                    from sklearn.metrics import mean_squared_error
-
-                                    mse = mean_squared_error(y_val_clean, y_pred_clean)
-                                    validation_score = (
-                                        -1.0 * mse
-                                    )  # Negate for consistent direction
-                                    self.logger.info(
-                                        f"  Validation MSE: {mse:.4f} (score: {validation_score:.4f})"
-                                    )
-                                elif (
-                                    validation_metric == "mean_pinball_loss"
-                                    or validation_metric in SCORING_NAMES
-                                ):
-                                    # For pinball loss, use the same alpha value as in hypertuning
-                                    if "hypertuning" in full_config:
-                                        scoring_config = full_config["hypertuning"].get(
-                                            "scoring", {"name": DEFAULT_SCORING_NAME}
-                                        )
-                                        alpha = (
-                                            scoring_config.get(
-                                                "alpha", DEFAULT_PINBALL_ALPHA
-                                            )
-                                            if isinstance(scoring_config, dict)
-                                            else DEFAULT_PINBALL_ALPHA
-                                        )
-                                    else:
-                                        alpha = DEFAULT_PINBALL_ALPHA
-
-                                    pinball_loss = mean_pinball_loss(
-                                        y_val_clean, y_pred_clean, alpha=alpha
-                                    )
-                                    validation_score = (
-                                        -1.0 * pinball_loss
-                                    )  # Negate for consistent direction (higher is better)
-                                    self.logger.info(
-                                        f"  Validation pinball loss (alpha={alpha}): {pinball_loss:.4f} (score: {validation_score:.4f})"
-                                    )
-                                else:
-                                    # Default to standard metrics if we don't recognize the metric
-                                    if is_classification:
-                                        from sklearn.metrics import accuracy_score
-
-                                        validation_score = accuracy_score(
-                                            y_val_clean, y_pred_clean
-                                        )
-                                        validation_metric = "accuracy"
-                                        self.logger.info(
-                                            f"  Validation accuracy: {validation_score:.4f}"
-                                        )
-                                    else:
-                                        from sklearn.metrics import r2_score
-
-                                        validation_score = r2_score(
-                                            y_val_clean, y_pred_clean
-                                        )
-                                        validation_metric = "r2"
-                                        self.logger.info(
-                                            f"  Validation R²: {validation_score:.4f}"
-                                        )
-
-                                # Store validation score
-                                self.trained_pipelines[experiment_name][
-                                    "validation_score"
-                                ] = validation_score
-                                self.trained_pipelines[experiment_name][
-                                    "validation_metric"
-                                ] = validation_metric
-
-                            except Exception as e:
-                                self.logger.warning(
-                                    f"  Could not calculate validation score: {str(e)}"
-                                )
+                        # Store validation score
+                        self.trained_pipelines[experiment_name]["validation_score"] = (
+                            validation_score
+                        )
+                        self.trained_pipelines[experiment_name]["validation_metric"] = (
+                            validation_metric
+                        )
 
                         # Print best parameters if hypertuning was used
                         if isinstance(
@@ -700,6 +403,246 @@ class ExperimentController:
 
         self.logger.info(f"Completed training {experiment_count} model experiments")
         return self.trained_pipelines
+
+    def _calculate_validation_score(
+        self,
+        experiment_name,
+        pipeline,
+        data_config_name,
+        data_config,
+        columns_to_drop,
+        full_config,
+    ):
+        """Calculate validation score for a trained pipeline."""
+        validation_score = None
+        validation_metric = None
+
+        if self.data[data_config_name]["validation"] is not None:
+            try:
+                # Get validation data
+                validation_data = self.data[data_config_name]["validation"].dropna(
+                    subset=[data_config["data"]["target"]["column"]]
+                )
+                X_val = validation_data.drop(columns=columns_to_drop)
+                y_val = validation_data[data_config["data"]["target"]["column"]]
+
+                # Find the metric that was used for hypertuning
+                # We'll use the same metric type when possible
+                unique_target_values = len(set(y_val))
+                is_classification = unique_target_values < 10
+
+                # For hyperparameter search, we extract the scoring info
+                # from the hypertuning_config directly to avoid attribute errors
+                if "hypertuning" in full_config:
+                    scoring_config = full_config["hypertuning"].get(
+                        "scoring", {"name": DEFAULT_SCORING_NAME}
+                    )
+                    if isinstance(scoring_config, str):
+                        validation_metric = scoring_config
+                    elif isinstance(scoring_config, dict):
+                        validation_metric = scoring_config.get(
+                            "name", DEFAULT_SCORING_NAME
+                        )
+                else:
+                    # Default metrics based on problem type
+                    validation_metric = "accuracy" if is_classification else "r2"
+
+                # Make predictions using the processed validation data
+                y_pred = pipeline.predict(X_val)
+
+                # Calculate score based on the metric
+                if validation_metric == "accuracy" or (
+                    validation_metric == DEFAULT_SCORING_NAME and is_classification
+                ):
+                    from sklearn.metrics import accuracy_score
+
+                    validation_score = accuracy_score(y_val, y_pred)
+                    self.logger.info(f"  Validation accuracy: {validation_score:.4f}")
+                elif validation_metric == "r2" or validation_metric == "r2_score":
+                    from sklearn.metrics import r2_score
+
+                    validation_score = r2_score(y_val, y_pred)
+                    self.logger.info(f"  Validation R²: {validation_score:.4f}")
+                elif validation_metric == "neg_mean_squared_error":
+                    from sklearn.metrics import mean_squared_error
+
+                    mse = mean_squared_error(y_val, y_pred)
+                    validation_score = -1.0 * mse  # Negate for consistent direction
+                    self.logger.info(
+                        f"  Validation MSE: {mse:.4f} (score: {validation_score:.4f})"
+                    )
+                elif (
+                    validation_metric == "mean_pinball_loss"
+                    or validation_metric in SCORING_NAMES
+                ):
+                    # For pinball loss, use the same alpha value as in hypertuning
+                    if "hypertuning" in full_config:
+                        scoring_config = full_config["hypertuning"].get(
+                            "scoring", {"name": DEFAULT_SCORING_NAME}
+                        )
+                        alpha = (
+                            scoring_config.get("alpha", DEFAULT_PINBALL_ALPHA)
+                            if isinstance(scoring_config, dict)
+                            else DEFAULT_PINBALL_ALPHA
+                        )
+                    else:
+                        alpha = DEFAULT_PINBALL_ALPHA
+
+                    pinball_loss = mean_pinball_loss(y_val, y_pred, alpha=alpha)
+                    validation_score = (
+                        -1.0 * pinball_loss
+                    )  # Negate for consistent direction (higher is better)
+                    self.logger.info(
+                        f"  Validation pinball loss (alpha={alpha}): {pinball_loss:.4f} (score: {validation_score:.4f})"
+                    )
+                else:
+                    # Default to standard metrics if we don't recognize the metric
+                    if is_classification:
+                        from sklearn.metrics import accuracy_score
+
+                        validation_score = accuracy_score(y_val, y_pred)
+                        validation_metric = "accuracy"
+                        self.logger.info(
+                            f"  Validation accuracy: {validation_score:.4f}"
+                        )
+                    else:
+                        from sklearn.metrics import r2_score
+
+                        validation_score = r2_score(y_val, y_pred)
+                        validation_metric = "r2"
+                        self.logger.info(f"  Validation R²: {validation_score:.4f}")
+
+            except Exception as e:
+                self.logger.warning(f"  Could not calculate validation score: {str(e)}")
+
+        return validation_score, validation_metric
+
+    def _create_estimator_with_hypertuning(
+        self, base_pipeline, full_config, experiment_count, data_config_name, model
+    ):
+        """Create estimator with hypertuning configuration if specified."""
+        estimator = base_pipeline
+        if (
+            "hypertuning" in full_config
+            and full_config["hypertuning"]["method"] in HYPERTUNING_METHODS
+        ):
+            hypertuning_config = full_config["hypertuning"]
+
+            # Handle special scoring metrics
+            scoring_config = hypertuning_config.get(
+                "scoring", {"name": DEFAULT_SCORING_NAME}
+            )
+            if isinstance(scoring_config, str):
+                # Backward compatibility: if scoring is still a string
+                scoring = scoring_config
+            else:
+                # New format: scoring is a dict with name and optional parameters
+                scoring_name = scoring_config.get("name", DEFAULT_SCORING_NAME)
+                if scoring_name in SCORING_NAMES:
+                    alpha = scoring_config.get(
+                        "alpha", DEFAULT_PINBALL_ALPHA
+                    )  # Default to median if not specified
+                    scoring = make_scorer(
+                        mean_pinball_loss,
+                        alpha=alpha,
+                        greater_is_better=False,
+                    )
+                else:
+                    scoring = scoring_name
+
+            # Modify parameter grid to prefix with "model__" since parameters are nested in pipeline
+            param_grid = hypertuning_config["parameters"]
+            prefixed_param_grid = {}
+            for key, values in param_grid.items():
+                prefixed_param_grid[f"model__{key}"] = values
+
+            method = hypertuning_config["method"]
+            if method == "grid_search":
+                estimator = GridSearchCV(
+                    base_pipeline,
+                    param_grid=prefixed_param_grid,
+                    cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
+                    scoring=scoring,
+                    verbose=DEFAULT_GRID_SEARCH_VERBOSE,
+                    n_jobs=hypertuning_config.get("n_jobs", -1),
+                )
+                self.logger.info(
+                    f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Grid Search"
+                )
+            elif method == "random_search":
+                n_iter = hypertuning_config.get("n_iter", 10)  # Default 10 iterations
+                estimator = RandomizedSearchCV(
+                    base_pipeline,
+                    param_distributions=prefixed_param_grid,
+                    n_iter=n_iter,
+                    cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
+                    scoring=scoring,
+                    verbose=DEFAULT_GRID_SEARCH_VERBOSE,
+                    n_jobs=hypertuning_config.get("n_jobs", -1),
+                    random_state=42,  # For reproducibility
+                )
+                self.logger.info(
+                    f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Random Search ({n_iter} iterations)"
+                )
+            elif method == "halving_grid_search":
+                estimator = HalvingGridSearchCV(
+                    base_pipeline,
+                    param_grid=prefixed_param_grid,
+                    cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
+                    scoring=scoring,
+                    verbose=DEFAULT_GRID_SEARCH_VERBOSE,
+                    n_jobs=1,  # Halving doesn't support parallel well - force single job
+                    random_state=42,  # For reproducibility
+                    factor=hypertuning_config.get(
+                        "factor", 3
+                    ),  # Default halving factor for early stopping
+                    resource=hypertuning_config.get(
+                        "resource", DEFAULT_HALVING_RESOURCE
+                    ),  # Resource to allocate
+                    max_resources=hypertuning_config.get(
+                        "max_resources", DEFAULT_HALVING_MAX_RESOURCES
+                    ),  # Max resources parameter
+                    min_resources=hypertuning_config.get(
+                        "min_resources", "exhaust"
+                    ),  # Min resources parameter - allow early stopping
+                )
+                self.logger.info(
+                    f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Halving Grid Search"
+                )
+            elif method == "halving_random_search":
+                n_candidates = hypertuning_config.get(
+                    "n_candidates", DEFAULT_HALVING_N_CANDIDATES
+                )  # Default number of candidates
+                estimator = HalvingRandomSearchCV(
+                    base_pipeline,
+                    param_distributions=prefixed_param_grid,
+                    n_candidates=n_candidates,
+                    cv=hypertuning_config.get("cv", DEFAULT_CV_FOLDS),
+                    scoring=scoring,
+                    verbose=DEFAULT_GRID_SEARCH_VERBOSE,
+                    n_jobs=1,  # Halving doesn't support parallel well - force single job
+                    random_state=42,  # For reproducibility
+                    factor=hypertuning_config.get(
+                        "factor", 3
+                    ),  # Default halving factor for early stopping
+                    resource=hypertuning_config.get(
+                        "resource", DEFAULT_HALVING_RESOURCE
+                    ),  # Resource to allocate
+                    max_resources=hypertuning_config.get(
+                        "max_resources", DEFAULT_HALVING_MAX_RESOURCES
+                    ),  # Max resources parameter
+                    min_resources=hypertuning_config.get(
+                        "min_resources", "exhaust"
+                    ),  # Min resources parameter - allow early stopping
+                )
+                self.logger.info(
+                    f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__} with Halving Random Search ({n_candidates} candidates)"
+                )
+            self.logger.info(
+                f"Training experiment {experiment_count}: {data_config_name} + {type(model).__name__}"
+            )
+
+        return estimator
 
     def save_single_model(self, experiment_name: str):
         """Save a single trained model pipeline."""
